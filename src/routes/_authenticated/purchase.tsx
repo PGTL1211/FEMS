@@ -490,6 +490,10 @@ function PurchasePage() {
   const [poLocationId, setPoLocationId] = useState<string>("");
   const [poPlantId, setPoPlantId] = useState<string>("");
 
+  // Location & Plant state for AI Invoice Extractor
+  const [aiLocationId, setAiLocationId] = useState<string>("");
+  const [aiPlantId, setAiPlantId] = useState<string>("");
+
   const userLocations = useMemo(() => {
     return getUserLocations(user?.email, role);
   }, [getUserLocations, user?.email, role, locations]);
@@ -497,6 +501,10 @@ function PurchasePage() {
   const userPlants = useMemo(() => {
     return getUserPlants(poLocationId, user?.email, role);
   }, [getUserPlants, poLocationId, user?.email, role, locations]);
+
+  const aiUserPlants = useMemo(() => {
+    return getUserPlants(aiLocationId, user?.email, role);
+  }, [getUserPlants, aiLocationId, user?.email, role, locations]);
 
   const materialsQuery = useQuery({ queryKey: ["materials"], queryFn: async () => (await supabase.from("materials").select("*").eq("active", true).order("name")).data ?? [] });
   const summaryQuery = useQuery({
@@ -534,25 +542,29 @@ function PurchasePage() {
     const seenKeys = new Set<string>();
     const merged: any[] = [];
 
-    // 1. Add all Supabase DB records
+    // 1. Add all Supabase DB records with clean normalized PO number
     dbData.forEach((p: any, idx: number) => {
-      const uniqueKey = p.id ? `db_${p.id}` : `db_${p.po_number}_${p.material_id || p.material_name}_${p.po_quantity}_${idx}`;
+      const cleanPoNum = (p.po_number || "").replace(/#\d+$/, "");
+      const uniqueKey = p.id ? `db_${p.id}` : `db_${cleanPoNum}_${p.material_id || p.material_name}_${p.po_quantity}_${idx}`;
       if (!seenKeys.has(uniqueKey)) {
         seenKeys.add(uniqueKey);
-        merged.push(p);
+        merged.push({ ...p, po_number: cleanPoNum });
       }
     });
 
     // 2. Append local custom purchases if not already in DB
     customPurchases.forEach((p: any, idx: number) => {
-      const uniqueKey = p.id ? `local_${p.id}` : `local_${p.po_number}_${p.material_id || p.material_name}_${p.po_quantity}_${idx}`;
+      const cleanPoNum = (p.po_number || "").replace(/#\d+$/, "");
+      const uniqueKey = p.id ? `local_${p.id}` : `local_${cleanPoNum}_${p.material_id || p.material_name}_${p.po_quantity}_${idx}`;
       const existsInDb = dbData.some((dp: any) =>
         (dp.id && p.id && dp.id === p.id) ||
-        (dp.po_number === p.po_number && (dp.material_id === p.material_id || dp.material_name === p.material_name) && Number(dp.po_quantity) === Number(p.po_quantity))
+        (((dp.po_number || "").replace(/#\d+$/, "") === cleanPoNum) &&
+         (dp.material_id === p.material_id || dp.material_name === p.material_name) &&
+         Number(dp.po_quantity) === Number(p.po_quantity))
       );
       if (!existsInDb && !seenKeys.has(uniqueKey)) {
         seenKeys.add(uniqueKey);
-        merged.push(p);
+        merged.push({ ...p, po_number: cleanPoNum });
       }
     });
 
@@ -568,17 +580,28 @@ function PurchasePage() {
   const groupedPOs = useMemo(() => {
     const map = new Map<string, any>();
     rawPurchases.forEach((p: any) => {
-      const key = p.po_number || p.po_id || p.id;
+      const cleanPo = (p.po_number || p.po_id || p.id || "").replace(/#\d+$/, "");
+      const key = cleanPo;
       if (!map.has(key)) {
+        let locName = p.location_name;
+        let plantName = p.plant_name;
+        if (!locName && p.remarks && p.remarks.startsWith("[")) {
+          const locMatch = p.remarks.match(/^\[(.*?)\s*-\s*(.*?)\]/);
+          if (locMatch) {
+            locName = locMatch[1];
+            plantName = locMatch[2];
+          }
+        }
+
         map.set(key, {
           id: p.id || p.po_id,
-          po_number: p.po_number,
+          po_number: cleanPo,
           po_date: p.po_date,
           supplier_name: p.supplier_name,
           location_id: p.location_id,
-          location_name: p.location_name,
+          location_name: locName,
           plant_id: p.plant_id,
-          plant_name: p.plant_name,
+          plant_name: plantName,
           remarks: p.remarks,
           items: [],
           totalOrderedQty: 0,
@@ -632,8 +655,14 @@ function PurchasePage() {
         const plants = getUserPlants(first.id, user?.email, role);
         setPoPlantId(plants[0]?.id || "");
       }
+      if (!aiLocationId || !userLocations.some((l) => l.id === aiLocationId)) {
+        const first = userLocations[0];
+        setAiLocationId(first.id);
+        const plants = getUserPlants(first.id, user?.email, role);
+        setAiPlantId(plants[0]?.id || "");
+      }
     }
-  }, [userLocations, poLocationId, user?.email, role, getUserPlants]);
+  }, [userLocations, poLocationId, aiLocationId, user?.email, role, getUserPlants]);
 
   useEffect(() => {
     if (openPO) {
@@ -732,11 +761,13 @@ function PurchasePage() {
       const locPrefix = chosenLoc ? `[${chosenLoc.name} - ${chosenPlant?.name || 'Plant'}] ` : '';
 
       const createdItems: any[] = [];
+      const basePoNum = poNumber.trim();
 
       for (let idx = 0; idx < validRows.length; idx++) {
         const row = validRows[idx];
         const mat = materialsList.find((m: any) => (m.material_id || m.id) === row.material_id);
-        let poId = `po-manual-${Date.now()}-${idx}`;
+        const dbPoNum = idx === 0 ? basePoNum : `${basePoNum}#${idx + 1}`;
+        let poId = `po-manual-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
         
         let dbMatId = row.material_id;
         const isMatUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(dbMatId);
@@ -750,15 +781,29 @@ function PurchasePage() {
 
         try {
           if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(dbMatId)) {
-            const { data: po } = await supabase.from("purchase_orders").insert({
+            let { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
               po_date: poDate,
-              po_number: poNumber,
+              po_number: basePoNum,
               supplier_name: supplier,
               material_id: dbMatId,
               po_quantity: Number(row.po_quantity),
               remarks: locPrefix + (poRemarks || ""),
               created_by: user?.id ?? null,
             }).select().single();
+
+            // If unique constraint violation on basePoNum, insert with item suffix dbPoNum
+            if (poErr && (poErr.message?.includes("duplicate") || poErr.message?.includes("unique") || (poErr as any).code === "23505")) {
+              const retryRes = await supabase.from("purchase_orders").insert({
+                po_date: poDate,
+                po_number: dbPoNum,
+                supplier_name: supplier,
+                material_id: dbMatId,
+                po_quantity: Number(row.po_quantity),
+                remarks: locPrefix + (poRemarks || ""),
+                created_by: user?.id ?? null,
+              }).select().single();
+              po = retryRes.data;
+            }
             if (po) poId = po.id;
           }
         } catch (e) {
@@ -769,7 +814,7 @@ function PurchasePage() {
           po_id: poId,
           id: poId,
           po_date: poDate,
-          po_number: poNumber,
+          po_number: basePoNum,
           supplier_name: supplier,
           location_id: poLocationId,
           location_name: chosenLoc?.name || "Factory Location",
@@ -965,12 +1010,17 @@ function PurchasePage() {
     }
   };
 
-  // Auto-Import Extracted Invoice into Database (Supports All Multi-line items in 1 PO)
+  // Auto-Import Extracted Invoice into Database (Supports All Multi-line items in 1 PO with Persistent Storage & Location Assignment)
   const importExtractedInvoice = useMutation({
     mutationFn: async (data: ExtractedInvoice) => {
       if (!data.items || data.items.length === 0) throw new Error("No extracted line items to import");
 
+      const chosenLoc = locations.find((l) => l.id === aiLocationId);
+      const chosenPlant = chosenLoc?.plants.find((p) => p.id === aiPlantId);
+      const locPrefix = chosenLoc ? `[${chosenLoc.name} - ${chosenPlant?.name || 'Plant'}] ` : '';
+
       const createdItems: any[] = [];
+      const basePoNum = (data.poNumber || `PO-${Date.now().toString().slice(-6)}`).trim();
 
       for (let idx = 0; idx < data.items.length; idx++) {
         const item = data.items[idx];
@@ -988,17 +1038,33 @@ function PurchasePage() {
         }
 
         let po: any = null;
+        const dbPoNum = idx === 0 ? basePoNum : `${basePoNum}#${idx + 1}`;
+
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(dbMatId)) {
           try {
-            const { data: createdPo } = await supabase.from("purchase_orders").insert({
+            let { data: createdPo, error: poErr } = await supabase.from("purchase_orders").insert({
               po_date: data.invoiceDate,
-              po_number: data.poNumber || `PO-${Date.now().toString().slice(-6)}`,
+              po_number: basePoNum,
               supplier_name: data.supplierName,
               material_id: dbMatId,
               po_quantity: item.quantity,
-              remarks: `Auto-extracted multi-item from PDF Invoice #${data.invoiceNo}`,
+              remarks: `${locPrefix}Auto-extracted multi-item from PDF Invoice #${data.invoiceNo}`,
               created_by: user?.id ?? null,
             }).select().single();
+
+            // If unique constraint violation on basePoNum, insert with item suffix dbPoNum
+            if (poErr && (poErr.message?.includes("duplicate") || poErr.message?.includes("unique") || (poErr as any).code === "23505")) {
+              const retryRes = await supabase.from("purchase_orders").insert({
+                po_date: data.invoiceDate,
+                po_number: dbPoNum,
+                supplier_name: data.supplierName,
+                material_id: dbMatId,
+                po_quantity: item.quantity,
+                remarks: `${locPrefix}Auto-extracted multi-item from PDF Invoice #${data.invoiceNo}`,
+                created_by: user?.id ?? null,
+              }).select().single();
+              createdPo = retryRes.data;
+            }
             po = createdPo;
 
             if (po && po.id) {
@@ -1007,7 +1073,7 @@ function PurchasePage() {
                 invoice_date: data.invoiceDate,
                 invoice_number: data.invoiceNo,
                 received_quantity: item.quantity,
-                remarks: `Auto-fulfilled multi-item from PDF Tax Invoice #${data.invoiceNo}`,
+                remarks: `${locPrefix}Auto-fulfilled multi-item from PDF Tax Invoice #${data.invoiceNo}`,
                 created_by: user?.id ?? null,
               });
             }
@@ -1016,23 +1082,29 @@ function PurchasePage() {
           }
         }
 
+        const localId = po?.id || `po-auto-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
         createdItems.push({
-          po_id: po?.id || `po-auto-${Date.now()}-${idx}`,
-          id: po?.id || `po-auto-${Date.now()}-${idx}`,
+          po_id: localId,
+          id: localId,
           po_date: data.invoiceDate,
-          po_number: data.poNumber || `PO-${Date.now().toString().slice(-6)}`,
+          po_number: basePoNum,
           supplier_name: data.supplierName,
+          location_id: aiLocationId,
+          location_name: chosenLoc?.name || "Factory Location",
+          plant_id: aiPlantId,
+          plant_name: chosenPlant?.name || "Receiving Unit",
           material_id: matId,
           material_name: mat?.name || item.rawName,
           uom: item.uom || mat?.uom || "PCS",
           po_quantity: item.quantity,
           received_quantity: item.quantity,
           pending_quantity: 0,
-          remarks: `Auto-extracted multi-item from PDF Tax Invoice #${data.invoiceNo}`,
+          remarks: `${locPrefix}Auto-extracted multi-item from PDF Tax Invoice #${data.invoiceNo}`,
         });
       }
 
-      setCustomPurchases((prev) => [...createdItems, ...prev]);
+      // CRITICAL FIX: Persist all imported multi-items to localStorage so page refresh never collapses them!
+      saveCustomPurchases([...createdItems, ...customPurchases]);
     },
     onSuccess: () => {
       toast.success(`Tax Invoice #${extractedData?.invoiceNo || ''} with ${extractedData?.items.length} items imported! Stock fulfilled.`);
@@ -1710,8 +1782,62 @@ function PurchasePage() {
                         )}
                       </h4>
                       <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
-                        Verify and edit Description, Quantity, Rate, Amount & Matched Material below before importing.
+                        Select Destination Location & Plant, then verify details below before importing.
                       </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Destination Location & Receiving Plant Selector Card (Restricted by User Permissions) */}
+                <div className="bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
+                    <MapPin className="h-4 w-4 text-indigo-600" />
+                    Destination Location & Receiving Plant for this Invoice *
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Location *</Label>
+                      <Select
+                        value={aiLocationId}
+                        onValueChange={(val) => {
+                          setAiLocationId(val);
+                          const plants = getUserPlants(val, user?.email, role);
+                          setAiPlantId(plants[0]?.id || "");
+                        }}
+                      >
+                        <SelectTrigger className="bg-white dark:bg-slate-900 font-semibold text-xs h-9">
+                          <SelectValue placeholder="Select Location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {userLocations.map((loc) => (
+                            <SelectItem key={loc.id} value={loc.id} className="font-semibold text-xs">
+                              📍 {loc.name} ({loc.code})
+                            </SelectItem>
+                          ))}
+                          {userLocations.length === 0 && (
+                            <SelectItem value="none" disabled>No assigned locations available</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Receiving Plant / Unit *</Label>
+                      <Select value={aiPlantId} onValueChange={setAiPlantId}>
+                        <SelectTrigger className="bg-white dark:bg-slate-900 font-semibold text-xs h-9">
+                          <SelectValue placeholder="Select Plant" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {aiUserPlants.map((p) => (
+                            <SelectItem key={p.id} value={p.id} className="font-semibold text-xs">
+                              🏭 {p.name} ({p.code})
+                            </SelectItem>
+                          ))}
+                          {aiUserPlants.length === 0 && (
+                            <SelectItem value="none" disabled>No assigned plants available</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
