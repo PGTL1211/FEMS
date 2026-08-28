@@ -91,62 +91,61 @@ const DB_LOCATION_ROW_NAME = "__FEMS_LOCATIONS_MASTER__";
 const DB_ASSIGNMENTS_ROW_NAME = "__FEMS_USER_ASSIGNMENTS__";
 
 export function LocationPlantProvider({ children }: { children: ReactNode }) {
-  const [locations, setLocations] = useState<LocationItem[]>(() => {
-    if (typeof window === "undefined") return DEFAULT_LOCATIONS;
+  const defaultAssignment: UserAssignment = {
+    isGlobal: false,
+    locations: ["loc-bhiwadi"],
+    plants: ["plant-bhi-ngm", "plant-bhi-pgtl"],
+  };
+  const defaultSeed: Record<string, UserAssignment> = {
+    "verify.software2040@pgel.in": defaultAssignment,
+  };
+
+  // SSR-safe state initializers to eliminate React Hydration error #418
+  const [locations, setLocations] = useState<LocationItem[]>(DEFAULT_LOCATIONS);
+  const [userAssignments, setUserAssignments] = useState<Record<string, UserAssignment>>(defaultSeed);
+  const [selectedLocationId, setSelectedLocationIdState] = useState<string>("ALL");
+  const [selectedPlantId, setSelectedPlantIdState] = useState<string>("ALL");
+
+  // Client-side hydration sync to guarantee SSR HTML matches initial render
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_LOCATIONS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      const savedLoc = localStorage.getItem(STORAGE_KEY_LOCATIONS);
+      if (savedLoc) {
+        const parsed = JSON.parse(savedLoc);
+        if (Array.isArray(parsed) && parsed.length > 0) setLocations(parsed);
       }
-    } catch (e) {
-      console.warn("Failed to load locations from localStorage", e);
-    }
-    return DEFAULT_LOCATIONS;
-  });
-
-  const [userAssignments, setUserAssignments] = useState<Record<string, UserAssignment>>(() => {
-    const defaultAssignment: UserAssignment = {
-      isGlobal: false,
-      locations: ["loc-bhiwadi"],
-      plants: ["plant-bhi-ngm", "plant-bhi-pgtl"],
-    };
-    const defaultSeed: Record<string, UserAssignment> = {
-      "verify.software2040@pgel.in": defaultAssignment,
-    };
-
-    if (typeof window === "undefined") return defaultSeed;
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_ASSIGNMENTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      const savedAssign = localStorage.getItem(STORAGE_KEY_ASSIGNMENTS);
+      if (savedAssign) {
+        const parsed = JSON.parse(savedAssign);
         if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
-          return { ...defaultSeed, ...parsed };
+          setUserAssignments((prev) => ({ ...prev, ...parsed }));
         }
       }
+      const savedSelLoc = localStorage.getItem(STORAGE_KEY_SEL_LOC);
+      if (savedSelLoc) setSelectedLocationIdState(savedSelLoc);
+      const savedSelPlant = localStorage.getItem(STORAGE_KEY_SEL_PLANT);
+      if (savedSelPlant) setSelectedPlantIdState(savedSelPlant);
     } catch (e) {
-      console.warn("Failed to load user assignments from localStorage", e);
+      console.warn("Failed to restore locations from localStorage", e);
     }
-    return defaultSeed;
-  });
+  }, []);
 
-  const [selectedLocationId, setSelectedLocationIdState] = useState<string>(() => {
-    if (typeof window === "undefined") return "ALL";
-    return localStorage.getItem(STORAGE_KEY_SEL_LOC) || "ALL";
-  });
-
-  const [selectedPlantId, setSelectedPlantIdState] = useState<string>(() => {
-    if (typeof window === "undefined") return "ALL";
-    return localStorage.getItem(STORAGE_KEY_SEL_PLANT) || "ALL";
-  });
-
-  // Fetch latest Locations & User Assignments directly from Supabase Database
+  // Fetch latest Locations & User Assignments directly from Supabase Database (Auth-guarded to prevent 401)
   const fetchFromSupabase = useCallback(async () => {
     try {
+      const { data: sessData } = await supabase.auth.getSession();
+      if (!sessData?.session) {
+        return; // Avoid unauthenticated 401 error
+      }
+
       const { data, error } = await supabase
         .from("departments")
         .select("*")
         .in("name", [DB_LOCATION_ROW_NAME, DB_ASSIGNMENTS_ROW_NAME]);
+
+      if (error) {
+        return;
+      }
 
       if (data && data.length > 0) {
         const locRow = data.find((r) => r.name === DB_LOCATION_ROW_NAME);
@@ -177,7 +176,7 @@ export function LocationPlantProvider({ children }: { children: ReactNode }) {
           try {
             const parsedAssign = JSON.parse(assignRow.description);
             if (parsedAssign && typeof parsedAssign === "object") {
-              setUserAssignments(parsedAssign);
+              setUserAssignments((prev) => ({ ...prev, ...parsedAssign }));
               if (typeof window !== "undefined") {
                 localStorage.setItem(STORAGE_KEY_ASSIGNMENTS, JSON.stringify(parsedAssign));
               }
@@ -198,9 +197,12 @@ export function LocationPlantProvider({ children }: { children: ReactNode }) {
     }
   }, [userAssignments]);
 
-  // Sync Locations to Supabase
+  // Sync Locations to Supabase (Auth-guarded)
   const syncLocationsToSupabase = async (updatedLocations: LocationItem[]) => {
     try {
+      const { data: sessData } = await supabase.auth.getSession();
+      if (!sessData?.session) return;
+
       const { data: existing } = await supabase
         .from("departments")
         .select("id")
@@ -225,9 +227,12 @@ export function LocationPlantProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Sync User Assignments to Supabase
+  // Sync User Assignments to Supabase (Auth-guarded)
   const syncAssignmentsToSupabase = async (updatedAssignments: Record<string, UserAssignment>) => {
     try {
+      const { data: sessData } = await supabase.auth.getSession();
+      if (!sessData?.session) return;
+
       const { data: existing } = await supabase
         .from("departments")
         .select("id")
@@ -255,6 +260,12 @@ export function LocationPlantProvider({ children }: { children: ReactNode }) {
   // Initial load & real-time listener for database changes
   useEffect(() => {
     fetchFromSupabase();
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+        fetchFromSupabase();
+      }
+    });
 
     const channel = supabase
       .channel("locations-and-assignments-sync")
@@ -298,6 +309,7 @@ export function LocationPlantProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
+      authSub.subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [fetchFromSupabase]);
