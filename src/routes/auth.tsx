@@ -57,20 +57,22 @@ function AuthPage() {
   };
 
   const sendOtp = async (isResend = false) => {
-    if (!email) return toast.error("Enter your email");
+    if (!email) return toast.error("Enter your email or user ID");
     setLoading(true);
     try {
-      const check = await precheckLoginEmail({ data: { email } });
+      const check: any = await precheckLoginEmail({ data: { email } });
       if (!check.allowed) {
         toast.error("Access Denied. Please contact the IT Administrator.");
         return;
       }
-      const res: any = await sendOtpSmtp({ data: { email } });
+      const targetEmail = check.resolvedEmail || email;
+      const res: any = await sendOtpSmtp({ data: { email: targetEmail } });
       if (!res.ok) {
         toast.error(res.message || "Failed to dispatch OTP via Nodemailer SMTP");
         return;
       }
-      toast.success(isResend ? "A new 6-digit OTP code has been sent." : "6-digit OTP sent to your email.");
+      setEmail(targetEmail);
+      toast.success(isResend ? "A new 6-digit OTP code has been sent." : `6-digit OTP sent to ${targetEmail}.`);
       setStep("otp");
       setAttemptsLeft(3);
       startResendTimer();
@@ -173,14 +175,14 @@ function AuthPage() {
               </div>
               <h2 className="text-2xl font-bold tracking-tight">Sign in</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Enter your authorized company email. We'll send a verification code via Nodemailer.
+                Enter your Corporate Email, Email Prefix (e.g. software.2040), Username, or Employee ID.
               </p>
               <form onSubmit={(e) => { e.preventDefault(); sendOtp(false); }} className="space-y-4 mt-6">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Company email</Label>
+                  <Label htmlFor="email">Email / User ID / Employee Code</Label>
                   <Input
-                    id="email" type="email" required autoFocus autoComplete="email"
-                    placeholder="you@pgel.in"
+                    id="email" type="text" required autoFocus autoComplete="username"
+                    placeholder="software.2040, admin, PG-001, or you@pgel.in"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
@@ -189,7 +191,7 @@ function AuthPage() {
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send OTP"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Only accounts authorized by the IT Admin can sign in. Public registration is disabled.
+                  The system automatically resolves your identifier and dispatches the OTP to your registered @pgel.in inbox.
                 </p>
               </form>
             </>

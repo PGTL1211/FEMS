@@ -5,9 +5,29 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { recordOtpFailureInternal } from "./auth-events.functions";
 import { loadEnvFile } from "@/lib/load-env";
 
-const EmailInput = z.object({ email: z.string().email() });
+const EmailInput = z.object({ email: z.string().trim().min(1) });
 const ALLOWED_DOMAIN = "pgel.in";
 const DEFAULT_IT_ADMIN = "software.2040@pgel.in";
+
+export function resolvePgelIdentifier(input: string): string {
+  const trimmed = (input || "").trim().toLowerCase();
+  if (!trimmed) return "";
+  if (trimmed.includes("@")) {
+    return trimmed;
+  }
+  const roleMap: Record<string, string> = {
+    admin: DEFAULT_IT_ADMIN,
+    it_admin: DEFAULT_IT_ADMIN,
+    super_admin: DEFAULT_IT_ADMIN,
+    operator: DEFAULT_IT_ADMIN,
+    "pg-001": DEFAULT_IT_ADMIN,
+    "pg-002": DEFAULT_IT_ADMIN,
+  };
+  if (roleMap[trimmed]) {
+    return roleMap[trimmed];
+  }
+  return `${trimmed}@${ALLOWED_DOMAIN}`;
+}
 
 function isAllowedEmail(email: string) {
   const e = email.toLowerCase().trim();
@@ -200,7 +220,7 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
       await mailer.send({
         from: { name: fromName, email: fromAddr },
         to: { email },
-        subject: `${code} is your ${fromName} verification code`,
+        subject: `PGEL MIS - Login Verification OTP: [${code}]`,
         text: `Your verification code is ${code}. It expires in 10 minutes.`,
         html: buildHtml(code, fromName),
       });
@@ -218,7 +238,7 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
       await transporter.sendMail({
         from: `"${fromName}" <${fromAddr}>`,
         to: email,
-        subject: `${code} is your ${fromName} verification code`,
+        subject: `PGEL MIS - Login Verification OTP: [${code}]`,
         text: `Your verification code is ${code}. It expires in 10 minutes.`,
         html: buildHtml(code, fromName),
       });
@@ -270,13 +290,17 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
 
 export const requestOtpEmail = createServerFn({ method: "POST" })
   .inputValidator((d) => EmailInput.parse(d))
-  .handler(async ({ data }) => generateAndSendOtp(data.email, "user"));
+  .handler(async ({ data }) => {
+    const resolvedEmail = resolvePgelIdentifier(data.email);
+    const res = await generateAndSendOtp(resolvedEmail, "user");
+    return { ...res, resolvedEmail };
+  });
 
 export const verifyOtpEmail = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ email: z.string().email(), token: z.string().trim().min(4).max(10) }).parse(d))
+  .inputValidator((d) => z.object({ email: z.string().trim().min(1), token: z.string().trim().min(4).max(10) }).parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const email = data.email.toLowerCase();
+    const email = resolvePgelIdentifier(data.email);
 
     if (!isAllowedEmail(email)) {
       return { ok: false as const, message: `Only @${ALLOWED_DOMAIN} email addresses are allowed.` };
