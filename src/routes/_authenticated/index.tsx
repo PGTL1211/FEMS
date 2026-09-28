@@ -206,15 +206,17 @@ function Dashboard() {
     return merged;
   }, [fabrications.data, customFabs]);
 
-  // Group all purchase orders cleanly by PO Number to accurately evaluate pending POs
-  const groupedPurchases = useMemo(() => {
+  const purList = useMemo(() => {
     const dbData = (purchases.data && purchases.data.length > 0) ? purchases.data : [];
-    const baseList = dbData.length > 0
+    return dbData.length > 0
       ? [...dbData, ...customPurchases]
       : [...customPurchases, ...DEMO_PURCHASES];
+  }, [purchases.data, customPurchases]);
 
+  // Group all purchase orders cleanly by PO Number to accurately evaluate pending POs
+  const groupedPurchases = useMemo(() => {
     const map = new Map<string, any>();
-    baseList.forEach((p: any) => {
+    purList.forEach((p: any) => {
       const cleanPo = (p.po_number || p.po_id || p.id || "").replace(/#\d+$/, "");
       if (!cleanPo) return;
 
@@ -255,7 +257,7 @@ function Dashboard() {
     });
 
     return Array.from(map.values());
-  }, [purchases.data, customPurchases, poOverrides]);
+  }, [purList, poOverrides]);
 
   const pendingPOsList = useMemo(() => {
     return groupedPurchases.filter((g) => g.totalPendingQty > 0);
