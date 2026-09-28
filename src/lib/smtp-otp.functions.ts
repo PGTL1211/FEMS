@@ -166,11 +166,11 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
     typeof navigator !== "undefined" &&
     typeof (navigator as any).userAgent === "string" &&
     (navigator as any).userAgent.includes("Cloudflare-Workers");
-  const smtpHost = process.env.SMTP_HOST || "";
-  const smtpUser = process.env.SMTP_USER || "";
-  const smtpPass = process.env.SMTP_PASS || "";
-  const fromName = process.env.SMTP_FROM_NAME || "PG Verification";
-  const fromAddr = process.env.SMTP_FROM || smtpUser;
+  const smtpHost = process.env.SMTP_HOST || "smtp.office365.com";
+  const smtpUser = process.env.SMTP_USER || "verify.software2040@pgel.in";
+  const smtpPass = process.env.SMTP_PASS || "fmdrdczrxkpjrbsv";
+  const fromName = process.env.SMTP_FROM_NAME || "PGEL MIS Verification";
+  const fromAddr = process.env.SMTP_FROM || smtpUser || "verify.software2040@pgel.in";
   const port = Number(process.env.SMTP_PORT || 587);
 
   let sendStatus: "sent" | "failed" = "sent";
@@ -201,9 +201,8 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
       const transporter = nodemailer.createTransport({
         host: smtpHost,
         port,
-        secure: port === 465,
+        secure: false, // 587 STARTTLS
         auth: { user: smtpUser, pass: smtpPass },
-        requireTLS: port !== 465,
         tls: {
           ciphers: "SSLv3",
           rejectUnauthorized: false,
