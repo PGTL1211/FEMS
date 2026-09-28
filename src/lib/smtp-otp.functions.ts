@@ -190,15 +190,13 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
     typeof navigator !== "undefined" &&
     typeof (navigator as any).userAgent === "string" &&
     (navigator as any).userAgent.includes("Cloudflare-Workers");
-  const smtpHost = process.env.SMTP_HOST || "smtp.office365.com";
-  const smtpUser = process.env.SMTP_USER || "verify.software2040@pgel.in";
-  // Dedicated active Microsoft 365 app password for verify.software2040@pgel.in
-  const smtpPass = (process.env.SMTP_PASS === "fmdrdczrxkpjrbsv")
-    ? process.env.SMTP_PASS
-    : "fmdrdczrxkpjrbsv";
-  const fromName = process.env.SMTP_FROM_NAME || "PGEL MIS Verification";
-  const fromAddr = process.env.SMTP_FROM || smtpUser || "verify.software2040@pgel.in";
-  const port = Number(process.env.SMTP_PORT || 587);
+  // Permanently designated dedicated Office 365 Service Account as per PGEL SOP
+  const smtpHost = "smtp.office365.com";
+  const smtpUser = "verify.software2040@pgel.in";
+  const smtpPass = "fmdrdczrxkpjrbsv";
+  const fromName = "PGEL MIS Verification";
+  const fromAddr = "verify.software2040@pgel.in";
+  const port = 587;
 
   let sendStatus: "sent" | "failed" = "sent";
   let sendError: string | null = null;
@@ -209,13 +207,14 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
       const mailer = await WorkerMailer.connect({
         host: smtpHost,
         port,
-        secure: port === 465,
-        startTls: port !== 465,
+        secure: false,
+        startTls: true,
         credentials: {
           username: smtpUser,
           password: smtpPass,
         },
-        authType: ["plain", "login"],
+        // Microsoft 365 Exchange Online requires LOGIN authentication (rejects PLAIN)
+        authType: ["login"],
       });
       await mailer.send({
         from: { name: fromName, email: fromAddr },
@@ -227,9 +226,12 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
     } else {
       const transporter = nodemailer.createTransport({
         host: smtpHost,
-        port,
+        port: 587,
         secure: false, // 587 STARTTLS
-        auth: { user: smtpUser, pass: smtpPass },
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
         tls: {
           ciphers: "SSLv3",
           rejectUnauthorized: false,
