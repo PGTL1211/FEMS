@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Factory, ShoppingCart, Boxes, AlertTriangle, QrCode, TrendingDown, ClipboardList, Activity, Package, Building2, Truck, Layers, Eye,
-  CheckCircle2, ArrowRight, ExternalLink, PackageCheck, AlertCircle, Clock, Check
+  CheckCircle2, ArrowRight, ExternalLink, PackageCheck, AlertCircle, Clock, Check, Scale
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -54,6 +54,52 @@ function StatNumber({ value }: { value: number }) {
     <span className={`${sizeClass} my-1 truncate max-w-full inline-block px-0.5`} title={formatted}>
       {formatted}
     </span>
+  );
+}
+
+// Dual Display Component: Weight View (Kg / Metric Tons) vs Unit View (Pieces / Qty)
+function StatDisplay({
+  mode,
+  qtyValue,
+  weightKg,
+  unitLabel,
+}: {
+  mode: "weight" | "units";
+  qtyValue: number;
+  weightKg: number;
+  unitLabel: string;
+}) {
+  if (mode === "weight") {
+    const roundedKg = Math.round(weightKg || 0);
+    const tons = (roundedKg / 1000).toFixed(2);
+    const isTons = roundedKg >= 1000;
+    const mainStr = isTons ? tons : roundedKg.toLocaleString();
+    const unitStr = isTons ? "Tons" : "kg";
+
+    return (
+      <div className="flex flex-col items-center justify-center my-0.5 w-full">
+        <div className="flex items-baseline justify-center gap-1 max-w-full px-0.5">
+          <span className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight truncate" title={`${roundedKg.toLocaleString()} kg`}>
+            {mainStr}
+          </span>
+          <span className="text-[10px] sm:text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 shrink-0">
+            {unitStr}
+          </span>
+        </div>
+        <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full">
+          {qtyValue.toLocaleString()} {unitLabel}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center my-0.5 w-full">
+      <StatNumber value={qtyValue} />
+      <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full">
+        {weightKg >= 1000 ? `${(weightKg / 1000).toFixed(2)} Tons` : `${Math.round(weightKg).toLocaleString()} kg`}
+      </span>
+    </div>
   );
 }
 
@@ -272,6 +318,94 @@ function Dashboard() {
   const totalFab = fabList.reduce((s, r) => s + Number(r.product_quantity || 0), 0);
   const activePOs = pendingPOsList;
 
+  // KPI Display Mode: Default to "weight" (Kg / Tons) as requested by production management
+  const [kpiMode, setKpiMode] = useState<"weight" | "units">(() => {
+    if (typeof window === "undefined") return "weight";
+    return (localStorage.getItem("fems_kpi_display_mode") as "weight" | "units") || "weight";
+  });
+
+  const toggleKpiMode = (mode: "weight" | "units") => {
+    setKpiMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("fems_kpi_display_mode", mode);
+    }
+  };
+
+  // Material weight map for fast lookup
+  const materialWeightMap = useMemo(() => {
+    const map = new Map<string, number>();
+    DEMO_MATERIALS.forEach((m) => {
+      const w = Number(m.unit_weight_kg || 0.5);
+      map.set(String(m.material_id || m.id).toLowerCase(), w);
+      if (m.code) map.set(m.code.toLowerCase(), w);
+      if (m.name) map.set(m.name.toLowerCase(), w);
+    });
+    return map;
+  }, []);
+
+  const getMatWeight = (m: any): number => {
+    if (m?.unit_weight_kg && Number(m.unit_weight_kg) > 0) return Number(m.unit_weight_kg);
+    const keyId = String(m?.material_id || m?.id || "").toLowerCase();
+    const keyName = String(m?.name || m?.material_name || "").toLowerCase();
+    const keyCode = String(m?.code || "").toLowerCase();
+    return materialWeightMap.get(keyId) || materialWeightMap.get(keyName) || materialWeightMap.get(keyCode) || 0.5;
+  };
+
+  // Product approx unit weight lookup (Trolley: 25.54kg, Table: 25.08kg, Rack: 42.68kg, Stand: 15.84kg)
+  const getProductUnitWeightKg = (pName: string): number => {
+    const lower = (pName || "").toLowerCase();
+    if (lower.includes("trolley")) return 25.54;
+    if (lower.includes("table") || lower.includes("bench")) return 25.08;
+    if (lower.includes("rack")) return 42.68;
+    if (lower.includes("stand")) return 15.84;
+    return 25.0; // fallback standard unit weight
+  };
+
+  // Total fabricated weight in Kg (using actual scale weight if available, or BOM approx weight)
+  const totalFabWeightKg = useMemo(() => {
+    return fabList.reduce((acc, f: any) => {
+      if (f.actual_scale_weight_kg && Number(f.actual_scale_weight_kg) > 0) {
+        return acc + Number(f.actual_scale_weight_kg);
+      }
+      if (f.expected_bom_weight_kg && Number(f.expected_bom_weight_kg) > 0) {
+        return acc + Number(f.expected_bom_weight_kg);
+      }
+      const prodName = (typeof f.products === "object" && f.products?.name) ? f.products.name : (f.product_name || "Trolley");
+      const unitW = getProductUnitWeightKg(prodName);
+      return acc + (Number(f.product_quantity || 0) * unitW);
+    }, 0);
+  }, [fabList]);
+
+  // Total purchased raw material weight in Kg
+  const totalPurchasedWeightKg = useMemo(() => {
+    return inv.reduce((s, r) => s + (Number(r.total_purchased ?? 0) * getMatWeight(r)), 0);
+  }, [inv, materialWeightMap]);
+
+  // Total consumed raw material weight in Kg
+  const totalConsumedWeightKg = useMemo(() => {
+    return inv.reduce((s, r) => s + (Number(r.total_consumed ?? 0) * getMatWeight(r)), 0);
+  }, [inv, materialWeightMap]);
+
+  // Total current stock raw material weight in Kg
+  const totalCurrentStockWeightKg = useMemo(() => {
+    return inv.reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0);
+  }, [inv, materialWeightMap]);
+
+  // Total low stock materials weight in Kg
+  const totalLowStockWeightKg = useMemo(() => {
+    return lowStock.reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0);
+  }, [lowStock, materialWeightMap]);
+
+  // Total pending purchase orders weight in Kg
+  const totalPendingWeightKg = useMemo(() => {
+    return pendingPOsList.reduce((acc, poGroup) => {
+      const groupWeight = poGroup.items.reduce((iAcc: number, it: any) => {
+        return iAcc + (Number(it.pending_quantity || 0) * getMatWeight(it));
+      }, 0);
+      return acc + groupWeight;
+    }, 0);
+  }, [pendingPOsList, materialWeightMap]);
+
   // Single PO quick fulfillment handler
   const handleFulfillSinglePO = async (poGroup: any) => {
     setFulfillingPoNumber(poGroup.po_number);
@@ -472,42 +606,123 @@ function Dashboard() {
 
   return (
     <div className="space-y-5 pb-8">
-      {/* Sticky 100% Opaque KPI Cards Header - Stays pinned below navbar on scroll with solid background */}
-      <div className="sticky top-[56px] xl:top-[64px] z-30 bg-slate-100 dark:bg-slate-900 py-3 -mx-4 md:-mx-8 px-4 md:px-8 border-b border-slate-200/80 shadow-sm">
+      {/* Sticky 100% Opaque KPI Cards Header with Weight vs Unit Toggle */}
+      <div className="sticky top-[56px] xl:top-[64px] z-30 bg-slate-100 dark:bg-slate-900 py-2.5 -mx-4 md:-mx-8 px-4 md:px-8 border-b border-slate-200/80 shadow-sm">
+        {/* Toggle Mode Bar */}
+        <div className="flex items-center justify-between gap-2 mb-2 px-0.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">
+            <Scale className="h-4 w-4 text-indigo-600" />
+            <span className="tracking-wide">PRODUCTION & INVENTORY KPI</span>
+            <span className="hidden sm:inline text-[10px] text-slate-500 font-semibold">
+              {kpiMode === "weight" ? "• Showing Physical Scale / BOM Weight (Kg & Metric Tons)" : "• Showing Piece Count & Unit Quantity"}
+            </span>
+          </div>
+
+          <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-300/60 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => toggleKpiMode("weight")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-extrabold flex items-center gap-1 transition-all ${
+                kpiMode === "weight"
+                  ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
+              }`}
+              title="Show fabricated products & materials in Weight (Kg / Metric Tons)"
+            >
+              <Scale className="h-3 w-3" />
+              Weight View (Kg/Ton)
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleKpiMode("units")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-extrabold flex items-center gap-1 transition-all ${
+                kpiMode === "units"
+                  ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
+              }`}
+              title="Show count of fabricated units & pieces"
+            >
+              <Boxes className="h-3 w-3" />
+              Unit View (Qty)
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           {/* Card 1: PRODUCTS FABRICATED */}
-          <div className="bg-[#a1e4fa] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 truncate w-full">FABRICATED</span>
-            <StatNumber value={totalFab} />
-            <span className="text-[10px] text-slate-600 font-semibold truncate w-full">Total Units</span>
+          <div className="bg-[#a1e4fa] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden border border-sky-300/40">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 truncate w-full">
+              {kpiMode === "weight" ? "FAB. WEIGHT" : "FABRICATED"}
+            </span>
+            <StatDisplay
+              mode={kpiMode}
+              qtyValue={totalFab}
+              weightKg={totalFabWeightKg}
+              unitLabel="Units"
+            />
+            <span className="text-[9px] text-slate-600 font-bold truncate w-full">
+              {kpiMode === "weight" ? `${totalFab.toLocaleString()} Units Total` : `${Math.round(totalFabWeightKg).toLocaleString()} kg`}
+            </span>
           </div>
 
           {/* Card 2: MATERIALS PURCHASED */}
-          <div className="bg-[#fbaea7] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate w-full">PURCHASED</span>
-            <StatNumber value={totalPurchased} />
-            <span className="text-[9px] leading-tight text-slate-700 font-medium truncate w-full">Material Inflow</span>
+          <div className="bg-[#fbaea7] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden border border-rose-300/40">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate w-full">
+              {kpiMode === "weight" ? "PUR. WEIGHT" : "PURCHASED"}
+            </span>
+            <StatDisplay
+              mode={kpiMode}
+              qtyValue={totalPurchased}
+              weightKg={totalPurchasedWeightKg}
+              unitLabel="Units"
+            />
+            <span className="text-[9px] leading-tight text-slate-700 font-semibold truncate w-full">
+              {kpiMode === "weight" ? "Material Inflow" : "Total Raw Material"}
+            </span>
           </div>
 
           {/* Card 3: CONSUMED */}
-          <div className="bg-[#93ebec] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 truncate w-full">CONSUMED</span>
-            <StatNumber value={totalConsumed} />
-            <span className="text-[10px] text-slate-600 font-semibold truncate w-full">Auto Deducted</span>
+          <div className="bg-[#93ebec] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden border border-cyan-300/40">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 truncate w-full">
+              {kpiMode === "weight" ? "CONS. WEIGHT" : "CONSUMED"}
+            </span>
+            <StatDisplay
+              mode={kpiMode}
+              qtyValue={totalConsumed}
+              weightKg={totalConsumedWeightKg}
+              unitLabel="Units"
+            />
+            <span className="text-[9px] text-slate-600 font-semibold truncate w-full">
+              {kpiMode === "weight" ? "BOM Deducted" : "Auto Deducted"}
+            </span>
           </div>
 
           {/* Card 4: CURRENT STOCK */}
-          <div className="bg-[#d7b0ea] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate w-full">CURRENT STOCK</span>
-            <StatNumber value={totalCurrentStock} />
-            <span className="text-[10px] text-slate-700 font-semibold truncate w-full">{inv.length} Items</span>
+          <div className="bg-[#d7b0ea] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden border border-purple-300/40">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate w-full">
+              {kpiMode === "weight" ? "STOCK WEIGHT" : "CURRENT STOCK"}
+            </span>
+            <StatDisplay
+              mode={kpiMode}
+              qtyValue={totalCurrentStock}
+              weightKg={totalCurrentStockWeightKg}
+              unitLabel="Units"
+            />
+            <span className="text-[9px] text-slate-700 font-bold truncate w-full">{inv.length} Catalog Items</span>
           </div>
 
-          {/* Card 5: MONTHLY FAB. (Peach background) */}
-          <div className="bg-[#fcd199] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
+          {/* Card 5: MONTHLY FAB. */}
+          <div className="bg-[#fcd199] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden border border-amber-300/40">
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate w-full">MONTHLY FAB.</span>
-            <StatNumber value={fabByMonth[fabByMonth.length - 1]?.fabrication ?? 0} />
-            <span className="text-[9px] text-slate-600 font-semibold truncate w-full">{fabByMonth[fabByMonth.length - 1]?.month} Total</span>
+            <StatDisplay
+              mode={kpiMode}
+              qtyValue={fabByMonth[fabByMonth.length - 1]?.fabrication ?? 0}
+              weightKg={
+                (fabByMonth[fabByMonth.length - 1]?.fabrication ?? 0) * 25.5
+              }
+              unitLabel="Units"
+            />
+            <span className="text-[9px] text-slate-600 font-semibold truncate w-full">{fabByMonth[fabByMonth.length - 1]?.month} Production</span>
           </div>
 
           {/* Card 6: PENDING POS (Interactive with Review Modal & Quick Fulfill) */}
@@ -520,10 +735,21 @@ function Dashboard() {
             title="Click to view & fulfill Pending Purchase Orders"
           >
             <div className="flex items-center justify-center gap-1 w-full">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate">PENDING POS</span>
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate">
+                {kpiMode === "weight" ? "PENDING WT." : "PENDING POS"}
+              </span>
               <ExternalLink className="h-3 w-3 text-slate-600 opacity-60 group-hover:opacity-100 group-hover:text-indigo-700 transition-all shrink-0" />
             </div>
-            <StatNumber value={pendingPOsList.length} />
+            {kpiMode === "weight" ? (
+              <StatDisplay
+                mode="weight"
+                qtyValue={pendingPOsList.length}
+                weightKg={totalPendingWeightKg}
+                unitLabel="Orders"
+              />
+            ) : (
+              <StatNumber value={pendingPOsList.length} />
+            )}
             <span className="text-[9px] text-slate-700 font-semibold truncate w-full flex items-center justify-center gap-1">
               {pendingPOsList.length === 0 ? (
                 <span className="text-emerald-700 font-bold flex items-center gap-0.5">
@@ -531,7 +757,7 @@ function Dashboard() {
                 </span>
               ) : (
                 <span className="text-amber-950 font-bold underline decoration-amber-600/50">
-                  {pendingPOsList.length} Awaiting (Click to Fix)
+                  {pendingPOsList.length} Awaiting (Click)
                 </span>
               )}
             </span>
@@ -540,15 +766,17 @@ function Dashboard() {
           {/* Card 7: LOW STOCK */}
           <div className="bg-[#ff5252] text-white rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-red-100 truncate w-full">LOW STOCK</span>
-            <span className="text-2xl lg:text-3xl font-black my-1 text-white truncate max-w-full block">{lowStock.length}</span>
-            <span className="text-[9px] text-red-100 font-semibold truncate w-full">{criticalStock.length} Critical</span>
+            <span className="text-2xl lg:text-3xl font-black my-0.5 text-white truncate max-w-full block">{lowStock.length}</span>
+            <span className="text-[9px] text-red-100 font-semibold truncate w-full">
+              {criticalStock.length} Critical ({Math.round(totalLowStockWeightKg).toLocaleString()} kg)
+            </span>
           </div>
 
           {/* Card 8: ACTIVE PRODUCTS */}
           <div className="bg-white text-slate-900 rounded-xl p-3 border border-slate-200 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600 truncate w-full">PRODUCTS</span>
-            <span className="text-2xl lg:text-3xl font-black my-1 text-indigo-600 truncate max-w-full block">{productWise.length > 0 ? productWise.length : 4}</span>
-            <span className="text-[9px] text-slate-500 font-semibold truncate w-full">Catalog Master</span>
+            <span className="text-2xl lg:text-3xl font-black my-0.5 text-indigo-600 truncate max-w-full block">{productWise.length > 0 ? productWise.length : 4}</span>
+            <span className="text-[9px] text-slate-500 font-semibold truncate w-full">BOM Avg ~27kg</span>
           </div>
         </div>
       </div>

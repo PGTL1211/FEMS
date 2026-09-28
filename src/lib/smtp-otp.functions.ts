@@ -3,7 +3,7 @@ import { z } from "zod";
 import nodemailer from "nodemailer";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { recordOtpFailureInternal } from "./auth-events.functions";
-import "@/lib/load-env";
+import { loadEnvFile } from "@/lib/load-env";
 
 const EmailInput = z.object({ email: z.string().email() });
 const ALLOWED_DOMAIN = "pgel.in";
@@ -162,13 +162,18 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
   const code = gen.data.properties.email_otp as string;
   const verificationType = gen.data.properties.verification_type ?? "magiclink";
 
+  try {
+    loadEnvFile();
+  } catch {}
+
   const isWorkerd =
     typeof navigator !== "undefined" &&
     typeof (navigator as any).userAgent === "string" &&
     (navigator as any).userAgent.includes("Cloudflare-Workers");
   const smtpHost = process.env.SMTP_HOST || "smtp.office365.com";
   const smtpUser = process.env.SMTP_USER || "verify.software2040@pgel.in";
-  const smtpPass = process.env.SMTP_PASS || "fmdrdczrxkpjrbsv";
+  const rawPass = process.env.SMTP_PASS || "";
+  const smtpPass = (rawPass && rawPass !== "nsxfmjjkskdrbbtt") ? rawPass : "fmdrdczrxkpjrbsv";
   const fromName = process.env.SMTP_FROM_NAME || "PGEL MIS Verification";
   const fromAddr = process.env.SMTP_FROM || smtpUser || "verify.software2040@pgel.in";
   const port = Number(process.env.SMTP_PORT || 587);
