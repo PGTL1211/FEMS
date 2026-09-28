@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Search, Boxes } from "lucide-react";
+import { Plus, Trash2, Search, Boxes, Download, FileSpreadsheet } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +33,38 @@ function MaterialsPage() {
     (m.uom || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (m.description || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const exportCSV = () => {
+    if (filteredMaterials.length === 0) {
+      toast.error("No materials available to export");
+      return;
+    }
+
+    const headers = ["Material Name", "Item Code", "UOM", "Unit Weight (kg)", "Minimum Stock", "Description"];
+    const csvRows = filteredMaterials.map((m: any) => {
+      const wt = m.unit_weight_kg ?? (DEMO_MATERIALS.find((dm) => dm.id === m.id || dm.name === m.name)?.unit_weight_kg ?? 0.5);
+      return [
+        `"${(m.name ?? "").replace(/"/g, '""')}"`,
+        `"${(m.code ?? "").replace(/"/g, '""')}"`,
+        `"${(m.uom ?? "").replace(/"/g, '""')}"`,
+        Number(wt).toFixed(2),
+        Number(m.minimum_stock || 0),
+        `"${(m.description ?? "").replace(/"/g, '""')}"`,
+      ].join(",");
+    });
+
+    const csvContent = "\ufeff" + [headers.join(","), ...csvRows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `FEMS_Materials_Master_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filteredMaterials.length} materials to CSV!`);
+  };
 
   const add = useMutation({
     mutationFn: async () => {
@@ -59,28 +91,39 @@ function MaterialsPage() {
         title="Material Master"
         description="Manage raw materials and standard unit weights (kg). Used for automatic BOM product weight calculation & handover verification."
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />New Material</Button></DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Add Material &amp; Weight</DialogTitle></DialogHeader>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. SS PIPE 28mm" /></div>
-                <div className="space-y-2"><Label>Code</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. SS-PIPE-28" /></div>
-                <div className="space-y-2"><Label>UOM</Label><Input value={form.uom} onChange={(e) => setForm({ ...form, uom: e.target.value })} placeholder="MTR / PCS / SET" /></div>
-                <div className="space-y-2">
-                  <Label>Unit Weight (kg / UOM)</Label>
-                  <Input type="number" step="0.01" min={0} value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} placeholder="e.g. 1.25" />
-                  <p className="text-[11px] text-slate-500">Weight per piece/meter for BOM calculation</p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={exportCSV}
+              className="gap-2 font-bold text-slate-700 dark:text-slate-200 border-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <Download className="h-4 w-4 text-indigo-600" />
+              Export Materials (CSV)
+            </Button>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild><Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"><Plus className="h-4 w-4 mr-2" />New Material</Button></DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Add Material &amp; Weight</DialogTitle></DialogHeader>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2"><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. SS PIPE 28mm" /></div>
+                  <div className="space-y-2"><Label>Code</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. SS-PIPE-28" /></div>
+                  <div className="space-y-2"><Label>UOM</Label><Input value={form.uom} onChange={(e) => setForm({ ...form, uom: e.target.value })} placeholder="MTR / PCS / SET" /></div>
+                  <div className="space-y-2">
+                    <Label>Unit Weight (kg / UOM)</Label>
+                    <Input type="number" step="0.01" min={0} value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} placeholder="e.g. 1.25" />
+                    <p className="text-[11px] text-slate-500">Weight per piece/meter for BOM calculation</p>
+                  </div>
+                  <div className="space-y-2"><Label>Minimum Stock</Label><Input type="number" min={0} value={form.minimum_stock} onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })} /></div>
+                  <div className="space-y-2 sm:col-span-2"><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
                 </div>
-                <div className="space-y-2"><Label>Minimum Stock</Label><Input type="number" min={0} value={form.minimum_stock} onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })} /></div>
-                <div className="space-y-2 sm:col-span-2"><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-              </div>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={() => add.mutate()} disabled={add.isPending}>Add Material</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+                <div className="flex justify-end gap-2 mt-4">
+                  <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button onClick={() => add.mutate()} disabled={add.isPending}>Add Material</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         }
       />
 
