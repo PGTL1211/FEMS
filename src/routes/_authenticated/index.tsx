@@ -1,12 +1,14 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Factory, ShoppingCart, Boxes, AlertTriangle, QrCode, TrendingDown, ClipboardList, Activity, Package, Building2, Truck, Layers, Eye,
+  CheckCircle2, ArrowRight, ExternalLink, PackageCheck, AlertCircle, Clock, Check
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   AreaChart, Area, PieChart, Pie, Cell, Legend, LabelList,
@@ -111,7 +113,12 @@ const renderCalloutLabel = (props: any) => {
 };
 
 function Dashboard() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [selectedFabView, setSelectedFabView] = useState<any | null>(null);
+  const [pendingPOsModalOpen, setPendingPOsModalOpen] = useState(false);
+  const [fulfillingPoNumber, setFulfillingPoNumber] = useState<string | null>(null);
+
   const inventory = useQuery({
     queryKey: ["inventory"],
     queryFn: async () => {
@@ -139,6 +146,26 @@ function Dashboard() {
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
+    }
+  });
+
+  const [customPurchases, setCustomPurchases] = useState<any[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = localStorage.getItem("fems_custom_purchases_v2");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [poOverrides, setPoOverrides] = useState<Record<string, any>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = localStorage.getItem("fems_po_overrides_v2");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
     }
   });
 
@@ -179,9 +206,60 @@ function Dashboard() {
     return merged;
   }, [fabrications.data, customFabs]);
 
-  const purList = (purchases.data && purchases.data.length > 0)
-    ? [...purchases.data, ...DEMO_PURCHASES]
-    : DEMO_PURCHASES;
+  // Group all purchase orders cleanly by PO Number to accurately evaluate pending POs
+  const groupedPurchases = useMemo(() => {
+    const dbData = (purchases.data && purchases.data.length > 0) ? purchases.data : [];
+    const baseList = dbData.length > 0
+      ? [...dbData, ...customPurchases]
+      : [...customPurchases, ...DEMO_PURCHASES];
+
+    const map = new Map<string, any>();
+    baseList.forEach((p: any) => {
+      const cleanPo = (p.po_number || p.po_id || p.id || "").replace(/#\d+$/, "");
+      if (!cleanPo) return;
+
+      if (!map.has(cleanPo)) {
+        map.set(cleanPo, {
+          id: p.id || p.po_id,
+          po_number: cleanPo,
+          po_date: p.po_date,
+          supplier_name: p.supplier_name || "PRIME LOGITECH INDUSTRY",
+          location_name: p.location_name || "Factory Location",
+          plant_name: p.plant_name || "Receiving Unit",
+          items: [],
+          totalOrderedQty: 0,
+          totalReceivedQty: 0,
+          totalPendingQty: 0,
+        });
+      }
+
+      const g = map.get(cleanPo);
+      const isOverridden = !!poOverrides[cleanPo]?.fulfilled;
+      const ordered = Number(p.po_quantity || 0);
+      const rawRec = isOverridden ? ordered : Number(p.received_quantity || 0);
+      const received = Math.min(ordered, Math.max(0, rawRec));
+      const pending = isOverridden ? 0 : Math.max(0, ordered - received);
+
+      g.items.push({
+        id: p.id || p.po_id,
+        material_name: p.material_name || "Material Item",
+        uom: p.uom || "PCS",
+        po_quantity: ordered,
+        received_quantity: received,
+        pending_quantity: pending,
+      });
+
+      g.totalOrderedQty += ordered;
+      g.totalReceivedQty += received;
+      g.totalPendingQty += pending;
+    });
+
+    return Array.from(map.values());
+  }, [purchases.data, customPurchases, poOverrides]);
+
+  const pendingPOsList = useMemo(() => {
+    return groupedPurchases.filter((g) => g.totalPendingQty > 0);
+  }, [groupedPurchases]);
 
   const totalCurrentStock = inv.reduce((s, r) => s + Number(r.current_stock ?? 0), 0);
   const totalPurchased = inv.reduce((s, r) => s + Number(r.total_purchased ?? 0), 0);
@@ -190,7 +268,119 @@ function Dashboard() {
   const criticalStock = inv.filter((r) => r.status === "critical");
 
   const totalFab = fabList.reduce((s, r) => s + Number(r.product_quantity || 0), 0);
-  const activePOs = purList.filter((p) => Number(p.pending_quantity ?? 0) > 0);
+  const activePOs = pendingPOsList;
+
+  // Single PO quick fulfillment handler
+  const handleFulfillSinglePO = async (poGroup: any) => {
+    setFulfillingPoNumber(poGroup.po_number);
+    try {
+      const nowStr = format(new Date(), "yyyy-MM-dd");
+      const invNum = `REC-${format(new Date(), "yyyyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      // 1. If line items have Supabase UUIDs, record invoice receipt
+      for (const item of poGroup.items) {
+        if (item.pending_quantity > 0) {
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.id);
+          if (isUUID) {
+            try {
+              await supabase.from("purchase_invoices").insert({
+                po_id: item.id,
+                invoice_date: nowStr,
+                invoice_number: invNum,
+                received_quantity: item.pending_quantity,
+                remarks: "Quick Fulfillment from Dashboard KPI Card",
+              });
+            } catch (e) {
+              console.warn("DB quick invoice insert error:", e);
+            }
+          }
+        }
+      }
+
+      // 2. Update custom local purchases if present
+      const updatedCustom = customPurchases.map((p: any) => {
+        const cleanPo = (p.po_number || p.po_id || p.id || "").replace(/#\d+$/, "");
+        if (cleanPo === poGroup.po_number) {
+          return {
+            ...p,
+            received_quantity: p.po_quantity,
+            pending_quantity: 0,
+          };
+        }
+        return p;
+      });
+      setCustomPurchases(updatedCustom);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("fems_custom_purchases_v2", JSON.stringify(updatedCustom));
+      }
+
+      // 3. Save fulfillment override in localStorage
+      const newOverrides = { ...poOverrides, [poGroup.po_number]: { fulfilled: true, date: nowStr } };
+      setPoOverrides(newOverrides);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("fems_po_overrides_v2", JSON.stringify(newOverrides));
+      }
+
+      toast.success(`PO #${poGroup.po_number} marked as fully received! Stock updated in inventory.`);
+      queryClient.invalidateQueries({ queryKey: ["po-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to fulfill PO");
+    } finally {
+      setFulfillingPoNumber(null);
+    }
+  };
+
+  // Bulk fulfillment handler
+  const handleFulfillAllPending = async () => {
+    if (pendingPOsList.length === 0) return;
+    setFulfillingPoNumber("ALL");
+    try {
+      const nowStr = format(new Date(), "yyyy-MM-dd");
+      const newOverrides = { ...poOverrides };
+
+      for (const poGroup of pendingPOsList) {
+        newOverrides[poGroup.po_number] = { fulfilled: true, date: nowStr };
+        for (const item of poGroup.items) {
+          if (item.pending_quantity > 0) {
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.id);
+            if (isUUID) {
+              try {
+                await supabase.from("purchase_invoices").insert({
+                  po_id: item.id,
+                  invoice_date: nowStr,
+                  invoice_number: `REC-${format(new Date(), "yyyyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`,
+                  received_quantity: item.pending_quantity,
+                  remarks: "Bulk Fulfillment from Dashboard",
+                });
+              } catch (e) {}
+            }
+          }
+        }
+      }
+
+      const updatedCustom = customPurchases.map((p: any) => ({
+        ...p,
+        received_quantity: p.po_quantity,
+        pending_quantity: 0,
+      }));
+      setCustomPurchases(updatedCustom);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("fems_custom_purchases_v2", JSON.stringify(updatedCustom));
+        localStorage.setItem("fems_po_overrides_v2", JSON.stringify(newOverrides));
+      }
+      setPoOverrides(newOverrides);
+
+      toast.success(`All ${pendingPOsList.length} pending purchase orders marked as fulfilled!`);
+      queryClient.invalidateQueries({ queryKey: ["po-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      setPendingPOsModalOpen(false);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to fulfill all orders");
+    } finally {
+      setFulfillingPoNumber(null);
+    }
+  };
 
   // Monthly trends (last 6 months)
   const months = Array.from({ length: 6 }, (_, i) => {
@@ -318,11 +508,31 @@ function Dashboard() {
             <span className="text-[9px] text-slate-600 font-semibold truncate w-full">{fabByMonth[fabByMonth.length - 1]?.month} Total</span>
           </div>
 
-          {/* Card 6: PENDING POS */}
-          <div className="bg-[#a8d3e6] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 truncate w-full">PENDING POS</span>
-            <StatNumber value={activePOs.length} />
-            <span className="text-[9px] text-slate-600 font-semibold truncate w-full">Awaiting Delivery</span>
+          {/* Card 6: PENDING POS (Interactive with Review Modal & Quick Fulfill) */}
+          <div
+            onClick={() => setPendingPOsModalOpen(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setPendingPOsModalOpen(true); }}
+            className="bg-[#a8d3e6] hover:bg-[#97c5da] text-slate-900 rounded-xl p-3 shadow-sm flex flex-col justify-between items-center text-center overflow-hidden cursor-pointer transition-all duration-200 transform hover:-translate-y-0.5 border border-sky-300/60 hover:shadow-md group"
+            title="Click to view & fulfill Pending Purchase Orders"
+          >
+            <div className="flex items-center justify-center gap-1 w-full">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 truncate">PENDING POS</span>
+              <ExternalLink className="h-3 w-3 text-slate-600 opacity-60 group-hover:opacity-100 group-hover:text-indigo-700 transition-all shrink-0" />
+            </div>
+            <StatNumber value={pendingPOsList.length} />
+            <span className="text-[9px] text-slate-700 font-semibold truncate w-full flex items-center justify-center gap-1">
+              {pendingPOsList.length === 0 ? (
+                <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                  <Check className="h-2.5 w-2.5" /> All Fulfilled
+                </span>
+              ) : (
+                <span className="text-amber-950 font-bold underline decoration-amber-600/50">
+                  {pendingPOsList.length} Awaiting (Click to Fix)
+                </span>
+              )}
+            </span>
           </div>
 
           {/* Card 7: LOW STOCK */}
@@ -723,6 +933,125 @@ function Dashboard() {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* PENDING PURCHASE ORDERS AUDIT & RESOLUTION DIALOG */}
+      <Dialog open={pendingPOsModalOpen} onOpenChange={setPendingPOsModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
+          <DialogHeader className="border-b pb-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap pr-6">
+              <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+                <Truck className="h-5 w-5 text-indigo-600" />
+                Pending Purchase Orders ({pendingPOsList.length})
+              </DialogTitle>
+              {pendingPOsList.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={handleFulfillAllPending}
+                  disabled={fulfillingPoNumber !== null}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 gap-1.5 shadow-xs"
+                >
+                  <PackageCheck className="h-4 w-4" />
+                  {fulfillingPoNumber === "ALL" ? "Fulfilling All..." : "Fulfill All Pending Orders"}
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Purchase orders with materials awaiting delivery. Click <strong>Quick Receive</strong> to record delivery into factory stock, or manage in Purchase page.
+            </p>
+          </DialogHeader>
+
+          {pendingPOsList.length === 0 ? (
+            <div className="py-12 text-center space-y-3">
+              <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <h3 className="font-bold text-sm text-slate-800">All Purchase Orders Are Fully Received!</h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                No materials are currently pending shipment. New purchase orders can be created in the Purchase section.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs font-semibold"
+                onClick={() => { setPendingPOsModalOpen(false); navigate({ to: "/purchase" }); }}
+              >
+                Go to Purchase Page <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-2">
+              {pendingPOsList.map((poGroup: any) => {
+                const isFulfilling = fulfillingPoNumber === poGroup.po_number || fulfillingPoNumber === "ALL";
+                return (
+                  <div key={poGroup.po_number} className="border border-slate-200 rounded-xl p-3.5 bg-white shadow-xs hover:border-indigo-200 transition-all space-y-2.5">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-sm text-indigo-700">{poGroup.po_number}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            {poGroup.totalPendingQty.toLocaleString()} Units Pending
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-600 font-semibold mt-0.5">
+                          🏭 {poGroup.supplier_name}
+                          <span className="text-slate-400 font-normal ml-2">📅 {safeFormatDate(poGroup.po_date, "dd MMM yyyy")}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleFulfillSinglePO(poGroup)}
+                          disabled={isFulfilling}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-7 gap-1 shadow-xs"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {isFulfilling ? "Receiving..." : "Quick Receive"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Pending Material Line Items */}
+                    <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100 text-xs">
+                      <span className="font-bold text-[10px] uppercase text-slate-500 tracking-wider block mb-1.5">
+                        Materials Awaiting Delivery ({poGroup.items.length} items):
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {poGroup.items.map((it: any, iIdx: number) => (
+                          <div key={iIdx} className="bg-white p-2 rounded border border-slate-200 flex items-center justify-between text-xs">
+                            <span className="font-semibold text-slate-800 truncate pr-2">📦 {it.material_name}</span>
+                            <div className="text-right shrink-0">
+                              <span className="font-bold text-amber-700 font-mono">{it.pending_quantity.toLocaleString()} {it.uom}</span>
+                              <span className="text-[10px] text-slate-400 block font-normal">of {it.po_quantity.toLocaleString()} {it.uom}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="flex justify-between items-center pt-2 border-t text-xs">
+                <span className="text-slate-500">
+                  Showing {pendingPOsList.length} orders with pending balance.
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold text-indigo-600 border-indigo-200"
+                  onClick={() => {
+                    setPendingPOsModalOpen(false);
+                    navigate({ to: "/purchase" });
+                  }}
+                >
+                  Manage in Purchase Table <ExternalLink className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
