@@ -538,70 +538,161 @@ function Dashboard() {
   };
 
   const fabByMonth = months.map(({ key, monthNum, label }) => {
-    const total = fabList.filter((f: any) => matchMonth(f.fab_date, key, monthNum))
-      .reduce((s: number, f: any) => s + Number(f.product_quantity || 0), 0);
-    return { month: label, fabrication: total };
+    const monthFabs = fabList.filter((f: any) => matchMonth(f.fab_date, key, monthNum));
+    const totalUnits = monthFabs.reduce((s: number, f: any) => s + Number(f.product_quantity || 0), 0);
+    const totalWeightKg = monthFabs.reduce((s: number, f: any) => {
+      const qty = Number(f.product_quantity || 0);
+      const prodName = (typeof f.products === 'object' && f.products?.name) ? f.products.name : (f.product_name || "Trolley");
+      const unitW = (f.actual_scale_weight_kg && Number(f.actual_scale_weight_kg) > 0)
+        ? Number(f.actual_scale_weight_kg) / (qty || 1)
+        : (f.expected_bom_weight_kg && Number(f.expected_bom_weight_kg) > 0)
+        ? Number(f.expected_bom_weight_kg) / (qty || 1)
+        : getProductUnitWeightKg(prodName);
+      return s + (qty * unitW);
+    }, 0);
+    return {
+      month: label,
+      fabrication: kpiMode === "weight" ? Math.round(totalWeightKg) : totalUnits,
+      weightKg: totalWeightKg,
+      units: totalUnits,
+    };
   });
 
   const purByMonth = months.map(({ key, monthNum, label }) => {
-    const total = purList.filter((p: any) => matchMonth(p.po_date, key, monthNum))
-      .reduce((s: number, p: any) => {
-        const rawQty = Number(p.received_quantity ?? p.po_quantity ?? 0);
-        // Normalize any extreme single DB entry anomaly so chart scale remains proportional
-        const qty = rawQty > 50000 ? 15000 : rawQty;
-        return s + qty;
-      }, 0);
-    return { month: label, purchase: total };
+    const monthPurs = purList.filter((p: any) => matchMonth(p.po_date, key, monthNum));
+    const totalUnits = monthPurs.reduce((s: number, p: any) => {
+      const rawQty = Number(p.received_quantity ?? p.po_quantity ?? 0);
+      const qty = rawQty > 50000 ? 15000 : rawQty;
+      return s + qty;
+    }, 0);
+    const totalWeightKg = monthPurs.reduce((s: number, p: any) => {
+      const rawQty = Number(p.received_quantity ?? p.po_quantity ?? 0);
+      const qty = rawQty > 50000 ? 15000 : rawQty;
+      return s + (qty * getMatWeight(p));
+    }, 0);
+    return {
+      month: label,
+      purchase: kpiMode === "weight" ? Math.round(totalWeightKg) : totalUnits,
+      weightKg: totalWeightKg,
+      units: totalUnits,
+    };
   });
 
   const productWise = Object.entries(
-    fabList.reduce<Record<string, number>>((acc, f: any) => {
-      const n = (typeof f.products === 'object' && f.products?.name) ? f.products.name : (f.product_name || "Table");
-      acc[n] = (acc[n] ?? 0) + Number(f.product_quantity || 0);
-      return acc;
-    }, {}),
-  ).map(([name, value]) => ({ name, value }));
-
-  const deptWise = Object.entries(
-    fabList.reduce<Record<string, number>>((acc, f: any) => {
-      const d = (typeof f.departments === 'object' && f.departments?.name) ? f.departments.name : (f.department_name || "Fabrication");
-      acc[d] = (acc[d] ?? 0) + Number(f.product_quantity || 0);
+    fabList.reduce<Record<string, { units: number; weightKg: number }>>((acc, f: any) => {
+      const n = (typeof f.products === 'object' && f.products?.name) ? f.products.name : (f.product_name || "Trolley");
+      const qty = Number(f.product_quantity || 0);
+      const unitW = (f.actual_scale_weight_kg && Number(f.actual_scale_weight_kg) > 0)
+        ? Number(f.actual_scale_weight_kg) / (qty || 1)
+        : (f.expected_bom_weight_kg && Number(f.expected_bom_weight_kg) > 0)
+        ? Number(f.expected_bom_weight_kg) / (qty || 1)
+        : getProductUnitWeightKg(n);
+      const cur = acc[n] || { units: 0, weightKg: 0 };
+      cur.units += qty;
+      cur.weightKg += qty * unitW;
+      acc[n] = cur;
       return acc;
     }, {}),
   )
-    .map(([name, value]) => ({ name: name.length > 18 ? name.substring(0, 16) + "..." : name, fullName: name, value }))
+    .map(([name, data]) => ({
+      name,
+      value: kpiMode === "weight" ? Math.round(data.weightKg) : data.units,
+      weightKg: data.weightKg,
+      units: data.units,
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const deptWise = Object.entries(
+    fabList.reduce<Record<string, { units: number; weightKg: number }>>((acc, f: any) => {
+      const d = (typeof f.departments === 'object' && f.departments?.name) ? f.departments.name : (f.department_name || "Fabrication");
+      const prodName = (typeof f.products === 'object' && f.products?.name) ? f.products.name : (f.product_name || "Trolley");
+      const qty = Number(f.product_quantity || 0);
+      const unitW = (f.actual_scale_weight_kg && Number(f.actual_scale_weight_kg) > 0)
+        ? Number(f.actual_scale_weight_kg) / (qty || 1)
+        : (f.expected_bom_weight_kg && Number(f.expected_bom_weight_kg) > 0)
+        ? Number(f.expected_bom_weight_kg) / (qty || 1)
+        : getProductUnitWeightKg(prodName);
+      const cur = acc[d] || { units: 0, weightKg: 0 };
+      cur.units += qty;
+      cur.weightKg += qty * unitW;
+      acc[d] = cur;
+      return acc;
+    }, {}),
+  )
+    .map(([name, data]) => ({
+      name: name.length > 18 ? name.substring(0, 16) + "..." : name,
+      fullName: name,
+      value: kpiMode === "weight" ? Math.round(data.weightKg) : data.units,
+      weightKg: data.weightKg,
+      units: data.units,
+    }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
   const supplierWise = Object.entries(
-    purList.reduce<Record<string, number>>((acc, p) => {
+    purList.reduce<Record<string, { units: number; weightKg: number }>>((acc, p: any) => {
       const s = p.supplier_name ?? "PRIME LOGITECH INDUSTRY";
-      acc[s] = (acc[s] ?? 0) + Number(p.po_quantity ?? p.received_quantity ?? 0);
+      const rawQty = Number(p.po_quantity ?? p.received_quantity ?? 0);
+      const qty = rawQty > 50000 ? 15000 : rawQty;
+      const cur = acc[s] || { units: 0, weightKg: 0 };
+      cur.units += qty;
+      cur.weightKg += qty * getMatWeight(p);
+      acc[s] = cur;
       return acc;
     }, {}),
   )
-    .map(([name, value]) => ({
+    .map(([name, data]) => ({
       name: name.replace(" Supplies", "").replace(" Corp", "").replace(" Ltd", "").replace(" Co", "").replace(" Works", "").replace(" Industrial", ""),
       fullName: name,
-      value,
+      value: kpiMode === "weight" ? Math.round(data.weightKg) : data.units,
+      weightKg: data.weightKg,
+      units: data.units,
     }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
   const topConsumed = [...inv]
-    .sort((a, b) => Number(b.total_consumed ?? 0) - Number(a.total_consumed ?? 0))
+    .sort((a, b) => {
+      const valA = kpiMode === "weight" ? Number(a.total_consumed ?? 0) * getMatWeight(a) : Number(a.total_consumed ?? 0);
+      const valB = kpiMode === "weight" ? Number(b.total_consumed ?? 0) * getMatWeight(b) : Number(b.total_consumed ?? 0);
+      return valB - valA;
+    })
     .slice(0, 5)
     .map((m) => ({
       name: m.name.length > 10 ? m.name.substring(0, 10) + "..." : m.name,
       fullName: m.name,
-      consumed: Number(m.total_consumed ?? 0),
-      stock: Number(m.current_stock ?? 0),
+      consumed: kpiMode === "weight" ? Math.round(Number(m.total_consumed ?? 0) * getMatWeight(m)) : Number(m.total_consumed ?? 0),
+      stock: kpiMode === "weight" ? Math.round(Number(m.current_stock ?? 0) * getMatWeight(m)) : Number(m.current_stock ?? 0),
     }));
 
   const inventoryStatusData = [
-    { name: "Healthy", value: inv.filter((r) => r.status === "healthy").length, color: "#3ea36f" },
-    { name: "Low", value: inv.filter((r) => r.status === "low").length, color: "#d19a2e" },
-    { name: "Critical", value: criticalStock.length, color: "#d9524a" },
+    {
+      name: "Healthy",
+      value: kpiMode === "weight"
+        ? Math.round(inv.filter((r) => r.status === "healthy").reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0))
+        : inv.filter((r) => r.status === "healthy").length,
+      color: "#3ea36f",
+      itemCount: inv.filter((r) => r.status === "healthy").length,
+      weightKg: inv.filter((r) => r.status === "healthy").reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0),
+    },
+    {
+      name: "Low",
+      value: kpiMode === "weight"
+        ? Math.round(inv.filter((r) => r.status === "low").reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0))
+        : inv.filter((r) => r.status === "low").length,
+      color: "#d19a2e",
+      itemCount: inv.filter((r) => r.status === "low").length,
+      weightKg: inv.filter((r) => r.status === "low").reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0),
+    },
+    {
+      name: "Critical",
+      value: kpiMode === "weight"
+        ? Math.round(criticalStock.reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0))
+        : criticalStock.length,
+      color: "#d9524a",
+      itemCount: criticalStock.length,
+      weightKg: criticalStock.reduce((s, r) => s + (Number(r.current_stock ?? 0) * getMatWeight(r)), 0),
+    },
   ];
 
   return (
@@ -789,12 +880,14 @@ function Dashboard() {
             <Factory className="h-4 w-4 text-indigo-600 shrink-0" />
             <div>
               <h3 className="font-bold text-sm text-slate-800 leading-tight">Fabrication Trend</h3>
-              <p className="text-[10px] text-slate-500">Units produced per month</p>
+              <p className="text-[10px] text-slate-500">
+                {kpiMode === "weight" ? "Output weight (kg / tons) per month" : "Units produced per month"}
+              </p>
             </div>
           </div>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={fabByMonth} margin={{ top: 18, right: 25, left: -15, bottom: 0 }}>
+              <AreaChart data={fabByMonth} margin={{ top: 18, right: 25, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="fabGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#818cf8" stopOpacity={0.35} />
@@ -803,10 +896,29 @@ function Dashboard() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="month" fontSize={10} stroke="#94a3b8" tickLine={false} />
-                <YAxis fontSize={10} stroke="#94a3b8" tickLine={false} />
-                <Tooltip contentStyle={{ fontSize: "11px", borderRadius: "8px", border: "1px solid #e2e8f0" }} />
+                <YAxis
+                  fontSize={10}
+                  stroke="#94a3b8"
+                  tickLine={false}
+                  tickFormatter={(v) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(0)}t` : `${v}kg`) : (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v))}
+                />
+                <Tooltip
+                  formatter={(v: any) => [
+                    kpiMode === "weight"
+                      ? (Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(2)} Tons (${Number(v).toLocaleString()} kg)` : `${Number(v).toLocaleString()} kg`)
+                      : `${v} Units`,
+                    "Fabrication",
+                  ]}
+                  contentStyle={{ fontSize: "11px", borderRadius: "8px", border: "1px solid #e2e8f0" }}
+                />
                 <Area type="monotone" dataKey="fabrication" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#fabGrad)" dot={{ r: 4, fill: "#6366f1", strokeWidth: 1.5, stroke: "#ffffff" }}>
-                  <LabelList dataKey="fabrication" position="top" offset={8} style={{ fontSize: "10px", fontWeight: "bold", fill: "#4f46e5" }} />
+                  <LabelList
+                    dataKey="fabrication"
+                    position="top"
+                    offset={8}
+                    style={{ fontSize: "10px", fontWeight: "bold", fill: "#4f46e5" }}
+                    formatter={(v: number) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${v}kg`) : (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v))}
+                  />
                 </Area>
               </AreaChart>
             </ResponsiveContainer>
@@ -819,7 +931,9 @@ function Dashboard() {
             <ShoppingCart className="h-4 w-4 text-emerald-600 shrink-0" />
             <div>
               <h3 className="font-bold text-sm text-slate-800 leading-tight">Purchase Trends</h3>
-              <p className="text-[10px] text-slate-500">Material quantity received per month</p>
+              <p className="text-[10px] text-slate-500">
+                {kpiMode === "weight" ? "Material weight received per month" : "Material quantity received per month"}
+              </p>
             </div>
           </div>
           <div className="h-56 w-full">
@@ -827,10 +941,29 @@ function Dashboard() {
               <BarChart data={purByMonth} margin={{ top: 18, right: 25, left: 5, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="month" fontSize={10} stroke="#94a3b8" tickLine={false} />
-                <YAxis fontSize={10} stroke="#94a3b8" tickLine={false} tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)} />
-                <Tooltip contentStyle={{ fontSize: "11px", borderRadius: "8px", border: "1px solid #e2e8f0" }} />
+                <YAxis
+                  fontSize={10}
+                  stroke="#94a3b8"
+                  tickLine={false}
+                  tickFormatter={(v) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(0)}t` : `${v}kg`) : (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v))}
+                />
+                <Tooltip
+                  formatter={(v: any) => [
+                    kpiMode === "weight"
+                      ? (Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(2)} Tons (${Number(v).toLocaleString()} kg)` : `${Number(v).toLocaleString()} kg`)
+                      : `${v} Units`,
+                    "Received",
+                  ]}
+                  contentStyle={{ fontSize: "11px", borderRadius: "8px", border: "1px solid #e2e8f0" }}
+                />
                 <Bar dataKey="purchase" fill="#34d399" barSize={16} radius={[6, 6, 0, 0]}>
-                  <LabelList dataKey="purchase" position="top" offset={6} style={{ fontSize: "9px", fontWeight: "bold", fill: "#059669" }} formatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v)} />
+                  <LabelList
+                    dataKey="purchase"
+                    position="top"
+                    offset={6}
+                    style={{ fontSize: "9px", fontWeight: "bold", fill: "#059669" }}
+                    formatter={(v: number) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${v}kg`) : (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v))}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -843,7 +976,9 @@ function Dashboard() {
             <Boxes className="h-4 w-4 text-amber-600 shrink-0" />
             <div>
               <h3 className="font-bold text-sm text-slate-800 leading-tight">Inventory Health Status</h3>
-              <p className="text-[10px] text-slate-500">Categorized stock levels</p>
+              <p className="text-[10px] text-slate-500">
+                {kpiMode === "weight" ? "Stock weight categorized by status" : "Categorized stock levels"}
+              </p>
             </div>
           </div>
           
@@ -869,15 +1004,24 @@ function Dashboard() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(val: any, name: any) => [`${val} Items`, name]}
+                  formatter={(val: any, name: any) => [
+                    kpiMode === "weight"
+                      ? (Number(val) >= 1000 ? `${(Number(val) / 1000).toFixed(2)} Tons (${Number(val).toLocaleString()} kg)` : `${Number(val).toLocaleString()} kg`)
+                      : `${val} Items`,
+                    name,
+                  ]}
                   contentStyle={{ fontSize: "12px", borderRadius: "8px", fontWeight: "bold" }}
                 />
                 <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle">
-                  <tspan x="50%" dy="-4" className="text-xl font-black fill-slate-900 dark:fill-slate-100 font-mono">
-                    {inventoryStatusData.reduce((acc, curr) => acc + curr.value, 0)}
+                  <tspan x="50%" dy="-4" className="text-lg font-black fill-slate-900 dark:fill-slate-100 font-mono">
+                    {kpiMode === "weight"
+                      ? (inventoryStatusData.reduce((acc, curr) => acc + curr.value, 0) >= 1000
+                        ? `${(inventoryStatusData.reduce((acc, curr) => acc + curr.value, 0) / 1000).toFixed(1)}t`
+                        : `${inventoryStatusData.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}kg`)
+                      : inventoryStatusData.reduce((acc, curr) => acc + curr.value, 0)}
                   </tspan>
                   <tspan x="50%" dy="18" className="text-[10px] font-extrabold fill-slate-400 uppercase tracking-widest">
-                    Items
+                    {kpiMode === "weight" ? "Weight" : "Items"}
                   </tspan>
                 </text>
               </PieChart>
@@ -896,7 +1040,9 @@ function Dashboard() {
                     <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{item.name}</span>
                   </div>
                   <div className="text-xs font-black text-slate-900 dark:text-slate-100 font-mono">
-                    {item.value} <span className="text-[9px] font-semibold text-slate-400 font-sans">({pct}%)</span>
+                    {kpiMode === "weight"
+                      ? (item.value >= 1000 ? `${(item.value / 1000).toFixed(1)}t` : `${item.value}kg`)
+                      : item.value} <span className="text-[9px] font-semibold text-slate-400 font-sans">({pct}%)</span>
                   </div>
                 </div>
               );
@@ -913,18 +1059,40 @@ function Dashboard() {
             <Package className="h-4 w-4 text-sky-600 shrink-0" />
             <div>
               <h3 className="font-bold text-sm text-slate-800 leading-tight">Product-wise Output</h3>
-              <p className="text-[10px] text-slate-500">Units produced by category</p>
+              <p className="text-[10px] text-slate-500">
+                {kpiMode === "weight" ? "Fabricated weight (kg) by category" : "Units produced by category"}
+              </p>
             </div>
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productWise.length > 0 ? productWise : [{ name: "Standard Product", value: 120 }]} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+              <BarChart data={productWise.length > 0 ? productWise : [{ name: "Standard Product", value: 120 }]} layout="vertical" margin={{ top: 5, right: 35, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis type="number" fontSize={10} stroke="#94a3b8" tickLine={false} />
+                <XAxis
+                  type="number"
+                  fontSize={10}
+                  stroke="#94a3b8"
+                  tickLine={false}
+                  tickFormatter={(v) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(0)}t` : `${v}kg`) : (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v))}
+                />
                 <YAxis dataKey="name" type="category" fontSize={10} stroke="#94a3b8" tickLine={false} width={80} />
-                <Tooltip contentStyle={{ fontSize: "11px", borderRadius: "8px" }} />
+                <Tooltip
+                  formatter={(v: any) => [
+                    kpiMode === "weight"
+                      ? (Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(2)} Tons (${Number(v).toLocaleString()} kg)` : `${Number(v).toLocaleString()} kg`)
+                      : `${v} Units`,
+                    "Output",
+                  ]}
+                  contentStyle={{ fontSize: "11px", borderRadius: "8px" }}
+                />
                 <Bar dataKey="value" fill="#38bdf8" barSize={14} radius={[0, 6, 6, 0]}>
-                  <LabelList dataKey="value" position="right" offset={8} style={{ fontSize: "10px", fontWeight: "bold", fill: "#0284c7" }} />
+                  <LabelList
+                    dataKey="value"
+                    position="right"
+                    offset={8}
+                    style={{ fontSize: "10px", fontWeight: "bold", fill: "#0284c7" }}
+                    formatter={(v: number) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${v}kg`) : v)}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -937,7 +1105,9 @@ function Dashboard() {
             <Building2 className="h-4 w-4 text-violet-600 shrink-0" />
             <div>
               <h3 className="font-bold text-sm text-slate-800 leading-tight">Department Breakdown</h3>
-              <p className="text-[10px] text-slate-500">Fabrication output by department</p>
+              <p className="text-[10px] text-slate-500">
+                {kpiMode === "weight" ? "Fabrication weight (kg) by department" : "Fabrication output by department"}
+              </p>
             </div>
           </div>
 
@@ -963,15 +1133,24 @@ function Dashboard() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(val: any, name: any) => [`${val} Units`, name]}
+                  formatter={(val: any, name: any) => [
+                    kpiMode === "weight"
+                      ? (Number(val) >= 1000 ? `${(Number(val) / 1000).toFixed(2)} Tons (${Number(val).toLocaleString()} kg)` : `${Number(val).toLocaleString()} kg`)
+                      : `${val} Units`,
+                    name,
+                  ]}
                   contentStyle={{ fontSize: "12px", borderRadius: "8px", fontWeight: "bold" }}
                 />
                 <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle">
                   <tspan x="50%" dy="-4" className="text-lg font-black fill-slate-900 dark:fill-slate-100 font-mono">
-                    {deptWise.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}
+                    {kpiMode === "weight"
+                      ? (deptWise.reduce((acc, curr) => acc + curr.value, 0) >= 1000
+                        ? `${(deptWise.reduce((acc, curr) => acc + curr.value, 0) / 1000).toFixed(1)}t`
+                        : `${deptWise.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}kg`)
+                      : deptWise.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}
                   </tspan>
                   <tspan x="50%" dy="18" className="text-[10px] font-extrabold fill-slate-400 uppercase tracking-widest">
-                    Units
+                    {kpiMode === "weight" ? "Weight" : "Units"}
                   </tspan>
                 </text>
               </PieChart>
@@ -988,7 +1167,9 @@ function Dashboard() {
                 <div key={idx} className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-800 text-[10px]">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
                   <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[100px]" title={d.name}>{d.name}</span>
-                  <strong className="font-mono text-slate-900 dark:text-slate-100 ml-0.5">{d.value}</strong>
+                  <strong className="font-mono text-slate-900 dark:text-slate-100 ml-0.5">
+                    {kpiMode === "weight" ? (d.value >= 1000 ? `${(d.value / 1000).toFixed(1)}t` : `${d.value}kg`) : d.value}
+                  </strong>
                   <span className="text-[9px] text-slate-400">({pct}%)</span>
                 </div>
               );
@@ -1002,7 +1183,9 @@ function Dashboard() {
             <Truck className="h-4 w-4 text-teal-600 shrink-0" />
             <div>
               <h3 className="font-bold text-sm text-slate-800 leading-tight">Top Suppliers Distribution</h3>
-              <p className="text-[10px] text-slate-500">Material volume by vendor</p>
+              <p className="text-[10px] text-slate-500">
+                {kpiMode === "weight" ? "Material weight (kg) supplied by vendor" : "Material volume by vendor"}
+              </p>
             </div>
           </div>
           <div className="h-64 w-full">
@@ -1010,10 +1193,29 @@ function Dashboard() {
               <BarChart data={supplierWise} margin={{ top: 18, right: 15, left: 5, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="name" fontSize={9} stroke="#94a3b8" tickLine={false} />
-                <YAxis fontSize={10} stroke="#94a3b8" tickLine={false} tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)} />
-                <Tooltip contentStyle={{ fontSize: "11px", borderRadius: "8px" }} />
+                <YAxis
+                  fontSize={10}
+                  stroke="#94a3b8"
+                  tickLine={false}
+                  tickFormatter={(v) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(0)}t` : `${v}kg`) : (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v))}
+                />
+                <Tooltip
+                  formatter={(v: any) => [
+                    kpiMode === "weight"
+                      ? (Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(2)} Tons (${Number(v).toLocaleString()} kg)` : `${Number(v).toLocaleString()} kg`)
+                      : `${v} Units`,
+                    "Supplied",
+                  ]}
+                  contentStyle={{ fontSize: "11px", borderRadius: "8px" }}
+                />
                 <Bar dataKey="value" fill="#14b8a6" barSize={16} radius={[6, 6, 0, 0]}>
-                  <LabelList dataKey="value" position="top" offset={6} style={{ fontSize: "9px", fontWeight: "bold", fill: "#0d9488" }} formatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v)} />
+                  <LabelList
+                    dataKey="value"
+                    position="top"
+                    offset={6}
+                    style={{ fontSize: "9px", fontWeight: "bold", fill: "#0d9488" }}
+                    formatter={(v: number) => (kpiMode === "weight" ? (v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${v}kg`) : (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v))}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -1042,6 +1244,7 @@ function Dashboard() {
                   <th className="text-left py-2 px-3">Product</th>
                   <th className="text-left py-2 px-3">Department</th>
                   <th className="text-right py-2 px-3">Qty</th>
+                  <th className="text-right py-2 px-3">Weight</th>
                   <th className="text-left py-2 px-3">Supervisor</th>
                   <th className="text-right py-2 px-3">View</th>
                 </tr>
@@ -1050,6 +1253,11 @@ function Dashboard() {
                 {fabList.slice(0, 10).map((r: any) => {
                   const prodName = (typeof r.products === "object" && r.products?.name) ? r.products.name : (r.product_name || "Table");
                   const deptName = (typeof r.departments === "object" && r.departments?.name) ? r.departments.name : (r.department_name || "Fabrication");
+                  const rowWeight = (r.actual_scale_weight_kg && Number(r.actual_scale_weight_kg) > 0)
+                    ? Number(r.actual_scale_weight_kg)
+                    : (r.expected_bom_weight_kg && Number(r.expected_bom_weight_kg) > 0)
+                    ? Number(r.expected_bom_weight_kg)
+                    : Number(r.product_quantity || 1) * getProductUnitWeightKg(prodName);
                   return (
                     <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <td className="py-2 px-3 font-medium text-slate-600 dark:text-slate-400">
@@ -1058,6 +1266,9 @@ function Dashboard() {
                       <td className="py-2 px-3 font-bold text-slate-900 dark:text-slate-100">{prodName}</td>
                       <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-medium">{deptName}</td>
                       <td className="py-2 px-3 text-right font-black text-indigo-600 dark:text-indigo-400">{r.product_quantity}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
+                        {rowWeight >= 1000 ? `${(rowWeight / 1000).toFixed(2)} t` : `${rowWeight.toFixed(1)} kg`}
+                      </td>
                       <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">{r.supervisor_name || "—"}</td>
                       <td className="py-2 px-3 text-right">
                         <Button
@@ -1093,7 +1304,7 @@ function Dashboard() {
               <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold uppercase border-b text-[10px] shadow-sm backdrop-blur">
                 <tr>
                   <th className="text-left py-2 px-2">Material</th>
-                  <th className="text-right py-2 px-2">Stock</th>
+                  <th className="text-right py-2 px-2">Stock ({kpiMode === "weight" ? "Weight" : "Qty"})</th>
                   <th className="text-left py-2 px-2">Status</th>
                 </tr>
               </thead>
@@ -1102,7 +1313,9 @@ function Dashboard() {
                   <tr key={r.material_id} className="hover:bg-slate-50">
                     <td className="py-2 px-2 font-semibold text-slate-900 truncate max-w-[110px]" title={r.name}>{r.name}</td>
                     <td className="py-2 px-2 text-right font-medium text-slate-800">
-                      {Number(r.current_stock).toLocaleString()}
+                      {kpiMode === "weight"
+                        ? `${(Number(r.current_stock) * getMatWeight(r)).toFixed(1)} kg`
+                        : Number(r.current_stock).toLocaleString()}
                     </td>
                     <td className="py-2 px-2">
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${r.status === 'critical' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'}`}>
