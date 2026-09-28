@@ -172,8 +172,10 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
     (navigator as any).userAgent.includes("Cloudflare-Workers");
   const smtpHost = process.env.SMTP_HOST || "smtp.office365.com";
   const smtpUser = process.env.SMTP_USER || "verify.software2040@pgel.in";
-  const rawPass = process.env.SMTP_PASS || "";
-  const smtpPass = (rawPass && rawPass !== "nsxfmjjkskdrbbtt") ? rawPass : "fmdrdczrxkpjrbsv";
+  // Dedicated active Microsoft 365 app password for verify.software2040@pgel.in
+  const smtpPass = (process.env.SMTP_PASS === "fmdrdczrxkpjrbsv")
+    ? process.env.SMTP_PASS
+    : "fmdrdczrxkpjrbsv";
   const fromName = process.env.SMTP_FROM_NAME || "PGEL MIS Verification";
   const fromAddr = process.env.SMTP_FROM || smtpUser || "verify.software2040@pgel.in";
   const port = Number(process.env.SMTP_PORT || 587);
