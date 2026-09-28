@@ -15,6 +15,7 @@ export interface Material {
   name: string;
   code: string;
   uom: string;
+  unit_weight_kg: number;
   total_purchased: number;
   total_consumed: number;
   current_stock: number;
@@ -39,34 +40,34 @@ export const DEMO_PRODUCTS: Product[] = [
   { id: "p-4", name: "Stand", code: "PROD-STD-04", description: "Ergonomic Display & Inspection Stand", active: true }
 ];
 
-// 24 Standard Industry Materials Catalog
+// 24 Standard Industry Materials Catalog with Realistic Weight (kg) per UOM
 export const DEMO_MATERIALS: Material[] = [
-  { material_id: "m-1", id: "m-1", name: "40 TYPE PLACON ROLLER", code: "PLACON-40", uom: "MTR", total_purchased: 4500, total_consumed: 3200, current_stock: 1300, minimum_stock: 500, status: "healthy", active: true },
-  { material_id: "m-2", id: "m-2", name: "80 TYPE PLACON ROLLER", code: "PLACON-80", uom: "MTR", total_purchased: 3800, total_consumed: 2900, current_stock: 900, minimum_stock: 400, status: "healthy", active: true },
-  { material_id: "m-3", id: "m-3", name: "40 TYPE A1 JOINT", code: "GPA40", uom: "PCS", total_purchased: 8500, total_consumed: 6100, current_stock: 2400, minimum_stock: 800, status: "healthy", active: true },
-  { material_id: "m-4", id: "m-4", name: "80 TYPE A1 JOINT", code: "GPA80", uom: "PCS", total_purchased: 6200, total_consumed: 4800, current_stock: 1400, minimum_stock: 600, status: "healthy", active: true },
-  { material_id: "m-5", id: "m-5", name: "40 TYPE B2 JOINT", code: "GPB40", uom: "PCS", total_purchased: 7400, total_consumed: 5300, current_stock: 2100, minimum_stock: 750, status: "healthy", active: true },
-  { material_id: "m-6", id: "m-6", name: "80 TYPE B2 JOINT", code: "GPB80", uom: "PCS", total_purchased: 5900, total_consumed: 4400, current_stock: 1500, minimum_stock: 550, status: "healthy", active: true },
+  { material_id: "m-1", id: "m-1", name: "40 TYPE PLACON ROLLER", code: "PLACON-40", uom: "MTR", unit_weight_kg: 0.85, total_purchased: 4500, total_consumed: 3200, current_stock: 1300, minimum_stock: 500, status: "healthy", active: true },
+  { material_id: "m-2", id: "m-2", name: "80 TYPE PLACON ROLLER", code: "PLACON-80", uom: "MTR", unit_weight_kg: 1.40, total_purchased: 3800, total_consumed: 2900, current_stock: 900, minimum_stock: 400, status: "healthy", active: true },
+  { material_id: "m-3", id: "m-3", name: "40 TYPE A1 JOINT", code: "GPA40", uom: "PCS", unit_weight_kg: 0.18, total_purchased: 8500, total_consumed: 6100, current_stock: 2400, minimum_stock: 800, status: "healthy", active: true },
+  { material_id: "m-4", id: "m-4", name: "80 TYPE A1 JOINT", code: "GPA80", uom: "PCS", unit_weight_kg: 0.32, total_purchased: 6200, total_consumed: 4800, current_stock: 1400, minimum_stock: 600, status: "healthy", active: true },
+  { material_id: "m-5", id: "m-5", name: "40 TYPE B2 JOINT", code: "GPB40", uom: "PCS", unit_weight_kg: 0.20, total_purchased: 7400, total_consumed: 5300, current_stock: 2100, minimum_stock: 750, status: "healthy", active: true },
+  { material_id: "m-6", id: "m-6", name: "80 TYPE B2 JOINT", code: "GPB80", uom: "PCS", unit_weight_kg: 0.35, total_purchased: 5900, total_consumed: 4400, current_stock: 1500, minimum_stock: 550, status: "healthy", active: true },
 
-  { material_id: "m-7", id: "m-7", name: "PJ1", code: "PJ1", uom: "SET", total_purchased: 12000, total_consumed: 9500, current_stock: 2500, minimum_stock: 1000, status: "healthy", active: true },
-  { material_id: "m-8", id: "m-8", name: "P100 JOINT", code: "P100", uom: "SET", total_purchased: 3500, total_consumed: 2800, current_stock: 700, minimum_stock: 300, status: "healthy", active: true },
-  { material_id: "m-9", id: "m-9", name: "PJ14 JOINT", code: "PJ14", uom: "SET", total_purchased: 4200, total_consumed: 3400, current_stock: 800, minimum_stock: 350, status: "healthy", active: true },
-  { material_id: "m-10", id: "m-10", name: "PJ16 JOINT", code: "PJ16", uom: "SET", total_purchased: 3100, total_consumed: 2650, current_stock: 450, minimum_stock: 500, status: "low", active: true },
-  { material_id: "m-11", id: "m-11", name: "PJ18 JOINT", code: "PJ18", uom: "SET", total_purchased: 2800, total_consumed: 2620, current_stock: 180, minimum_stock: 400, status: "critical", active: true },
-  { material_id: "m-12", id: "m-12", name: "PJ2 JOINT", code: "PJ2", uom: "SET", total_purchased: 9800, total_consumed: 7200, current_stock: 2600, minimum_stock: 900, status: "healthy", active: true },
-  { material_id: "m-13", id: "m-13", name: "PJ3 JOINT", code: "PJ3", uom: "SET", total_purchased: 5100, total_consumed: 4100, current_stock: 1000, minimum_stock: 500, status: "healthy", active: true },
-  { material_id: "m-14", id: "m-14", name: "PJ4 JOINT", code: "PJ4", uom: "SET", total_purchased: 4700, total_consumed: 3900, current_stock: 800, minimum_stock: 450, status: "healthy", active: true },
-  { material_id: "m-15", id: "m-15", name: "PJ5 JOINT", code: "PJ5", uom: "SET", total_purchased: 3900, total_consumed: 3200, current_stock: 700, minimum_stock: 350, status: "healthy", active: true },
-  { material_id: "m-16", id: "m-16", name: "PJ7 JOINT", code: "PJ7", uom: "SET", total_purchased: 3600, total_consumed: 3100, current_stock: 500, minimum_stock: 400, status: "healthy", active: true },
-  { material_id: "m-17", id: "m-17", name: "PJ8 JOINT", code: "PJ8", uom: "SET", total_purchased: 3400, total_consumed: 2900, current_stock: 500, minimum_stock: 350, status: "healthy", active: true },
+  { material_id: "m-7", id: "m-7", name: "PJ1", code: "PJ1", uom: "SET", unit_weight_kg: 0.28, total_purchased: 12000, total_consumed: 9500, current_stock: 2500, minimum_stock: 1000, status: "healthy", active: true },
+  { material_id: "m-8", id: "m-8", name: "P100 JOINT", code: "P100", uom: "SET", unit_weight_kg: 0.45, total_purchased: 3500, total_consumed: 2800, current_stock: 700, minimum_stock: 300, status: "healthy", active: true },
+  { material_id: "m-9", id: "m-9", name: "PJ14 JOINT", code: "PJ14", uom: "SET", unit_weight_kg: 0.32, total_purchased: 4200, total_consumed: 3400, current_stock: 800, minimum_stock: 350, status: "healthy", active: true },
+  { material_id: "m-10", id: "m-10", name: "PJ16 JOINT", code: "PJ16", uom: "SET", unit_weight_kg: 0.36, total_purchased: 3100, total_consumed: 2650, current_stock: 450, minimum_stock: 500, status: "low", active: true },
+  { material_id: "m-11", id: "m-11", name: "PJ18 JOINT", code: "PJ18", uom: "SET", unit_weight_kg: 0.38, total_purchased: 2800, total_consumed: 2620, current_stock: 180, minimum_stock: 400, status: "critical", active: true },
+  { material_id: "m-12", id: "m-12", name: "PJ2 JOINT", code: "PJ2", uom: "SET", unit_weight_kg: 0.30, total_purchased: 9800, total_consumed: 7200, current_stock: 2600, minimum_stock: 900, status: "healthy", active: true },
+  { material_id: "m-13", id: "m-13", name: "PJ3 JOINT", code: "PJ3", uom: "SET", unit_weight_kg: 0.34, total_purchased: 5100, total_consumed: 4100, current_stock: 1000, minimum_stock: 500, status: "healthy", active: true },
+  { material_id: "m-14", id: "m-14", name: "PJ4 JOINT", code: "PJ4", uom: "SET", unit_weight_kg: 0.32, total_purchased: 4700, total_consumed: 3900, current_stock: 800, minimum_stock: 450, status: "healthy", active: true },
+  { material_id: "m-15", id: "m-15", name: "PJ5 JOINT", code: "PJ5", uom: "SET", unit_weight_kg: 0.30, total_purchased: 3900, total_consumed: 3200, current_stock: 700, minimum_stock: 350, status: "healthy", active: true },
+  { material_id: "m-16", id: "m-16", name: "PJ7 JOINT", code: "PJ7", uom: "SET", unit_weight_kg: 0.42, total_purchased: 3600, total_consumed: 3100, current_stock: 500, minimum_stock: 400, status: "healthy", active: true },
+  { material_id: "m-17", id: "m-17", name: "PJ8 JOINT", code: "PJ8", uom: "SET", unit_weight_kg: 0.40, total_purchased: 3400, total_consumed: 2900, current_stock: 500, minimum_stock: 350, status: "healthy", active: true },
 
-  { material_id: "m-18", id: "m-18", name: "SS PIPE", code: "SS-PIPE-28", uom: "MTR", total_purchased: 15000, total_consumed: 11200, current_stock: 3800, minimum_stock: 1500, status: "healthy", active: true },
-  { material_id: "m-19", id: "m-19", name: "6X2 PU WHEEL SWIVEL LOCK", code: "WHL-6X2-SL", uom: "PCS", total_purchased: 2400, total_consumed: 1800, current_stock: 600, minimum_stock: 300, status: "healthy", active: true },
-  { material_id: "m-20", id: "m-20", name: "6X2 PU WHEEL FIXED", code: "WHL-6X2-FX", uom: "PCS", total_purchased: 2200, total_consumed: 1700, current_stock: 500, minimum_stock: 250, status: "healthy", active: true },
-  { material_id: "m-21", id: "m-21", name: "3x1.25 PU WHEEL SWIVEL", code: "WHL-3X1-SW", uom: "PCS", total_purchased: 3100, total_consumed: 2780, current_stock: 320, minimum_stock: 350, status: "low", active: true },
-  { material_id: "m-22", id: "m-22", name: "3x1.25 PU WHEEL SWIVEL LOCK", code: "WHL-3X1-SL", uom: "PCS", total_purchased: 2900, total_consumed: 2300, current_stock: 600, minimum_stock: 300, status: "healthy", active: true },
-  { material_id: "m-23", id: "m-23", name: "END CAP", code: "END-CAP-28", uom: "PCS", total_purchased: 18000, total_consumed: 13500, current_stock: 4500, minimum_stock: 2000, status: "healthy", active: true },
-  { material_id: "m-24", id: "m-24", name: "PJ15 JOINT", code: "PJ15", uom: "SET", total_purchased: 3300, total_consumed: 2700, current_stock: 600, minimum_stock: 300, status: "healthy", active: true }
+  { material_id: "m-18", id: "m-18", name: "SS PIPE", code: "SS-PIPE-28", uom: "MTR", unit_weight_kg: 1.25, total_purchased: 15000, total_consumed: 11200, current_stock: 3800, minimum_stock: 1500, status: "healthy", active: true },
+  { material_id: "m-19", id: "m-19", name: "6X2 PU WHEEL SWIVEL LOCK", code: "WHL-6X2-SL", uom: "PCS", unit_weight_kg: 2.10, total_purchased: 2400, total_consumed: 1800, current_stock: 600, minimum_stock: 300, status: "healthy", active: true },
+  { material_id: "m-20", id: "m-20", name: "6X2 PU WHEEL FIXED", code: "WHL-6X2-FX", uom: "PCS", unit_weight_kg: 1.85, total_purchased: 2200, total_consumed: 1700, current_stock: 500, minimum_stock: 250, status: "healthy", active: true },
+  { material_id: "m-21", id: "m-21", name: "3x1.25 PU WHEEL SWIVEL", code: "WHL-3X1-SW", uom: "PCS", unit_weight_kg: 0.75, total_purchased: 3100, total_consumed: 2780, current_stock: 320, minimum_stock: 350, status: "low", active: true },
+  { material_id: "m-22", id: "m-22", name: "3x1.25 PU WHEEL SWIVEL LOCK", code: "WHL-3X1-SL", uom: "PCS", unit_weight_kg: 0.82, total_purchased: 2900, total_consumed: 2300, current_stock: 600, minimum_stock: 300, status: "healthy", active: true },
+  { material_id: "m-23", id: "m-23", name: "END CAP", code: "END-CAP-28", uom: "PCS", unit_weight_kg: 0.04, total_purchased: 18000, total_consumed: 13500, current_stock: 4500, minimum_stock: 2000, status: "healthy", active: true },
+  { material_id: "m-24", id: "m-24", name: "PJ15 JOINT", code: "PJ15", uom: "SET", unit_weight_kg: 0.35, total_purchased: 3300, total_consumed: 2700, current_stock: 600, minimum_stock: 300, status: "healthy", active: true }
 ];
 
 // 14 Standard Manufacturing Plant Departments
