@@ -43,7 +43,8 @@ export function StatusBadge({ status }: { status: "healthy" | "low" | "critical"
 
 // Smart KPI Card Stat Number Renderer to Prevent Text Overflow
 function StatNumber({ value }: { value: number }) {
-  const formatted = (value || 0).toLocaleString();
+  const rounded = Math.round(Number(value) || 0);
+  const formatted = rounded.toLocaleString();
   let sizeClass = "text-2xl lg:text-3xl font-black";
   if (formatted.length > 8) {
     sizeClass = "text-base lg:text-lg font-black tracking-tight";
@@ -57,7 +58,7 @@ function StatNumber({ value }: { value: number }) {
   );
 }
 
-// Dual Display Component: Weight View (Kg / Metric Tons) vs Unit View (Pieces / Qty)
+// Dual Display Component: Weight View (Kg) vs Unit View (Pieces / Qty) - whole figures without decimals
 function StatDisplay({
   mode,
   qtyValue,
@@ -69,25 +70,24 @@ function StatDisplay({
   weightKg: number;
   unitLabel: string;
 }) {
+  const roundedQty = Math.round(Number(qtyValue) || 0);
+  const roundedKg = Math.round(Number(weightKg) || 0);
+
   if (mode === "weight") {
-    const roundedKg = Math.round(weightKg || 0);
-    const tons = (roundedKg / 1000).toFixed(2);
-    const isTons = roundedKg >= 1000;
-    const mainStr = isTons ? tons : roundedKg.toLocaleString();
-    const unitStr = isTons ? "Tons" : "kg";
+    const mainStr = roundedKg.toLocaleString();
 
     return (
       <div className="flex flex-col items-center justify-center my-0.5 w-full">
         <div className="flex items-baseline justify-center gap-1 max-w-full px-0.5">
-          <span className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight truncate" title={`${roundedKg.toLocaleString()} kg`}>
+          <span className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight truncate" title={`${mainStr} kg`}>
             {mainStr}
           </span>
           <span className="text-[10px] sm:text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 shrink-0">
-            {unitStr}
+            kg
           </span>
         </div>
         <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full">
-          {qtyValue.toLocaleString()} {unitLabel}
+          {roundedQty.toLocaleString()} {unitLabel}
         </span>
       </div>
     );
@@ -95,9 +95,9 @@ function StatDisplay({
 
   return (
     <div className="flex flex-col items-center justify-center my-0.5 w-full">
-      <StatNumber value={qtyValue} />
+      <StatNumber value={roundedQty} />
       <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full">
-        {weightKg >= 1000 ? `${(weightKg / 1000).toFixed(2)} Tons` : `${Math.round(weightKg).toLocaleString()} kg`}
+        {roundedKg.toLocaleString()} kg
       </span>
     </div>
   );
@@ -705,7 +705,7 @@ function Dashboard() {
             <Scale className="h-4 w-4 text-indigo-600" />
             <span className="tracking-wide">PRODUCTION & INVENTORY KPI</span>
             <span className="hidden sm:inline text-[10px] text-slate-500 font-semibold">
-              {kpiMode === "weight" ? "• Showing Physical Scale / BOM Weight (Kg & Metric Tons)" : "• Showing Piece Count & Unit Quantity"}
+              {kpiMode === "weight" ? "• Showing Physical Scale / BOM Weight (Kg)" : "• Showing Piece Count & Unit Quantity"}
             </span>
           </div>
 
@@ -718,10 +718,10 @@ function Dashboard() {
                   ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-400"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
               }`}
-              title="Show fabricated products & materials in Weight (Kg / Metric Tons)"
+              title="Show fabricated products & materials in Weight (Kg)"
             >
               <Scale className="h-3 w-3" />
-              Weight View (Kg/Ton)
+              Weight View (Kg)
             </button>
             <button
               type="button"
@@ -752,7 +752,7 @@ function Dashboard() {
               unitLabel="Units"
             />
             <span className="text-[9px] text-slate-600 font-bold truncate w-full">
-              {kpiMode === "weight" ? `${totalFab.toLocaleString()} Units Total` : `${Math.round(totalFabWeightKg).toLocaleString()} kg`}
+              {kpiMode === "weight" ? `${Math.round(totalFab).toLocaleString()} Units Total` : `${Math.round(totalFabWeightKg).toLocaleString()} kg`}
             </span>
           </div>
 

@@ -206,6 +206,7 @@ export function FabricationPage() {
       const photoMatch = remarksStr.match(/\[Photo:\s*([^\]]+)\]/);
       const weightMatch = remarksStr.match(/\[Weight:\s*BOM\s*([\d.]+)kg\s*\|\s*Actual\s*([\d.]+)kg/);
       const handoverMatch = remarksStr.match(/\[Handover:\s*(.*?)\s*->\s*(.*?)\]/);
+      const handoverByTagMatch = remarksStr.match(/\[HandoverBy:\s*([^\]]+)\]/);
 
       // 2. Resolve Actual Handover Measured Weight
       let actualWeight = Number(item.actual_weight_kg || 0);
@@ -223,9 +224,39 @@ export function FabricationPage() {
         actualWeight = Number((totalExpectedWeight * varianceFactor).toFixed(2));
       }
 
-      // Handover Department & Receiver (extract from Supabase remarks or record)
-      const handoverDept = item.handover_department || (handoverMatch ? handoverMatch[1].trim() : ((item.departments as any)?.name || "Surface Finishing & Paint Shop"));
-      const handoverPerson = item.handover_person_name || (handoverMatch ? handoverMatch[2].trim() : (item.supervisor_name || "Plant Supervisor"));
+      // Handover Department, Handover By & Receiver (extract from Supabase remarks or record)
+      let handoverDept = item.handover_department || "";
+      let handoverBy = item.handover_by || "";
+      let handoverPerson = item.handover_person_name || "";
+
+      if (handoverByTagMatch && !handoverBy) {
+        handoverBy = handoverByTagMatch[1].trim();
+      }
+
+      if (handoverMatch) {
+        const rawLeft = handoverMatch[1].trim();
+        const rawRight = handoverMatch[2].trim();
+        if (rawLeft.includes("|")) {
+          const parts = rawLeft.split("|");
+          if (!handoverDept) handoverDept = parts[0].trim();
+          const byPart = parts[1]?.replace(/^By:\s*/i, "").trim();
+          if (byPart && !handoverBy) handoverBy = byPart;
+        } else if (!handoverDept) {
+          handoverDept = rawLeft;
+        }
+        const toPart = rawRight.replace(/^To:\s*/i, "").trim();
+        if (!handoverPerson) handoverPerson = toPart;
+      }
+
+      if (!handoverDept) {
+        handoverDept = (item.departments as any)?.name || "Surface Finishing & Paint Shop";
+      }
+      if (!handoverBy) {
+        handoverBy = item.supervisor_name || "Fabrication Dispatcher";
+      }
+      if (!handoverPerson) {
+        handoverPerson = "Plant Supervisor";
+      }
       const handoverImg = item.handover_image || (photoMatch ? photoMatch[1].trim() : DEMO_WEIGHING_SCALE_IMAGE);
 
       // Audit calculation against active tolerance factor
@@ -247,6 +278,7 @@ export function FabricationPage() {
         weight_variance_kg: audit.varianceKg,
         weight_variance_pct: audit.variancePct,
         handover_department: handoverDept,
+        handover_by: handoverBy,
         handover_person_name: handoverPerson,
         handover_image: handoverImg,
         is_discrepancy_alert: audit.isAlert,
@@ -283,6 +315,7 @@ export function FabricationPage() {
 
   // Handover & Weighing Form State
   const [handoverDept, setHandoverDept] = useState("Surface Finishing & Paint Shop");
+  const [handoverBy, setHandoverBy] = useState("");
   const [handoverPerson, setHandoverPerson] = useState("");
   const [weighingMode, setWeighingMode] = useState<"batch" | "individual">("batch");
   const [actualMeasuredWeightInput, setActualMeasuredWeightInput] = useState<string>("");
@@ -378,6 +411,7 @@ export function FabricationPage() {
     setRemarks("");
     setRows([{ material_id: "", required: "" }]);
     setHandoverDept("Surface Finishing & Paint Shop");
+    setHandoverBy("");
     setHandoverPerson("");
     setWeighingMode("batch");
     setActualMeasuredWeightInput("");
@@ -498,6 +532,7 @@ export function FabricationPage() {
 
       // Weight and Handover validations
       if (!handoverDept.trim()) throw new Error("Select or enter Handover Department");
+      if (!handoverBy.trim()) throw new Error("Enter name of person handing over (Handover By)");
       if (!handoverPerson.trim()) throw new Error("Enter name of person whom goods are handed over to");
       if (!(currentActualWeight > 0)) throw new Error("Enter actual physical scale weight measured at handover");
 
@@ -548,8 +583,9 @@ export function FabricationPage() {
       }
 
       const photoTag = `[Photo: ${uploadedPhotoUrl}]`;
-      const weightSummaryNote = `[Weight: BOM ${bomCalculations.totalBatchExpectedWeight}kg | Actual ${currentActualWeight}kg (${formWeightAudit.variancePct > 0 ? '+' : ''}${formWeightAudit.variancePct}%)] [Handover: ${handoverDept} -> ${handoverPerson}]`;
-      const fullRemarks = `${locPrefix}${photoTag} ${weightSummaryNote} ${remarks || ""}`.trim();
+      const handoverByTag = `[HandoverBy: ${handoverBy.trim()}]`;
+      const weightSummaryNote = `[Weight: BOM ${bomCalculations.totalBatchExpectedWeight}kg | Actual ${currentActualWeight}kg (${formWeightAudit.variancePct > 0 ? '+' : ''}${formWeightAudit.variancePct}%)] [Handover: ${handoverDept} | By: ${handoverBy.trim()} -> To: ${handoverPerson.trim()}]`;
+      const fullRemarks = `${locPrefix}${photoTag} ${handoverByTag} ${weightSummaryNote} ${remarks || ""}`.trim();
 
       let fabId = `fab-${Date.now()}`;
       try {
@@ -558,7 +594,7 @@ export function FabricationPage() {
           product_id: productId,
           product_quantity: qty,
           department_id: departmentId || null,
-          supervisor_name: supervisor || null,
+          supervisor_name: supervisor || handoverBy || null,
           remarks: fullRemarks,
           created_by: user?.id ?? null,
         }).select().single();
@@ -613,6 +649,7 @@ export function FabricationPage() {
         is_discrepancy_alert: formWeightAudit.isAlert,
         discrepancy_reason: discrepancyReason || null,
         handover_department: handoverDept,
+        handover_by: handoverBy,
         handover_person_name: handoverPerson,
         handover_image: uploadedPhotoUrl,
         individual_weights: weighingMode === "individual" ? individualWeights.map((w) => Number(w || 0)) : [],
@@ -676,6 +713,7 @@ export function FabricationPage() {
       const deptName = (f.departments as { name?: string } | null)?.name || "";
       const supervisor = f.supervisor_name || "";
       const handoverDept = f.handover_department || "";
+      const handoverBy = f.handover_by || "";
       const handoverPerson = f.handover_person_name || "";
       const fabDate = f.fab_date || "";
       const locStr = (f.location_name || "") + " " + (f.plant_name || "");
@@ -686,6 +724,7 @@ export function FabricationPage() {
         deptName.toLowerCase().includes(q) ||
         supervisor.toLowerCase().includes(q) ||
         handoverDept.toLowerCase().includes(q) ||
+        handoverBy.toLowerCase().includes(q) ||
         handoverPerson.toLowerCase().includes(q) ||
         fabDate.toLowerCase().includes(q) ||
         locStr.toLowerCase().includes(q)
@@ -1056,7 +1095,7 @@ export function FabricationPage() {
                         </p>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-3">
                         <div className="space-y-1">
                           <Label className="text-xs font-bold">Handover Department *</Label>
                           <Select value={handoverDept} onValueChange={setHandoverDept}>
@@ -1074,7 +1113,17 @@ export function FabricationPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs font-bold">Whom to Handover (Receiver Name) *</Label>
+                          <Label className="text-xs font-bold">Handover By (Dispatcher Name) *</Label>
+                          <Input
+                            placeholder="e.g. Vikram Sharma (Fab Incharge)"
+                            value={handoverBy}
+                            onChange={(e) => setHandoverBy(e.target.value)}
+                            className="bg-white dark:bg-slate-900 font-semibold"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs font-bold">Handover To (Receiver Name) *</Label>
                           <Input
                             placeholder="e.g. Ramesh Verma (Paint Shop Lead)"
                             value={handoverPerson}
@@ -1470,7 +1519,7 @@ export function FabricationPage() {
           <div className="relative flex-1 min-w-[220px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Search by product, location, department, handover person..."
+              placeholder="Search by product, location, department, handover by/to..."
               className="pl-9 text-xs"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1499,7 +1548,7 @@ export function FabricationPage() {
                 <th className="text-right px-3 py-3">BOM Weight</th>
                 <th className="text-right px-3 py-3">Actual Weight</th>
                 <th className="text-center px-3 py-3">Tolerance Status</th>
-                <th className="text-left px-3.5 py-3">Handover Dept &amp; To</th>
+                <th className="text-left px-3.5 py-3">Handover Details (Dept / By / To)</th>
                 <th className="text-center px-2 py-3 w-16">Photo</th>
                 <th className="text-right px-3.5 py-3 w-20">Audit</th>
               </tr>
@@ -1572,13 +1621,20 @@ export function FabricationPage() {
                     </td>
 
                     <td className="px-3.5 py-3">
-                      <div className="flex flex-col">
+                      <div className="flex flex-col gap-0.5">
                         <span className="font-bold text-slate-800 dark:text-slate-200">
                           {f.handover_department || "Assembly"}
                         </span>
-                        <span className="text-[11px] text-indigo-600 font-medium">
-                          👤 {f.handover_person_name || f.supervisor_name || "Supervisor"}
-                        </span>
+                        <div className="flex flex-col text-[11px] leading-tight">
+                          {f.handover_by && (
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">
+                              By: <strong className="text-slate-900 dark:text-slate-100">{f.handover_by}</strong>
+                            </span>
+                          )}
+                          <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                            To: <strong>{f.handover_person_name || f.supervisor_name || "Supervisor"}</strong>
+                          </span>
+                        </div>
                       </div>
                     </td>
 
@@ -1834,15 +1890,21 @@ export function FabricationPage() {
                     <Building2 className="h-3.5 w-3.5 text-indigo-600" /> Handover Chain of Custody
                   </span>
                   <div>
-                    <span className="text-slate-500 block">Handed Over To Department:</span>
-                    <strong className="text-slate-800 dark:text-slate-200 text-sm">
-                      {selectedFabView.handover_department || "Surface Finishing & Paint Shop"}
+                    <span className="text-slate-500 block">Handover By (Dispatcher / Issuer):</span>
+                    <strong className="text-slate-900 dark:text-slate-100 text-sm">
+                      👤 {selectedFabView.handover_by || selectedFabView.supervisor_name || "Fabrication Dispatcher"}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Receiver Person:</span>
+                    <span className="text-slate-500 block">Handed Over To Department:</span>
+                    <strong className="text-slate-800 dark:text-slate-200 text-sm">
+                      🏢 {selectedFabView.handover_department || "Surface Finishing & Paint Shop"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Receiver Person (Handover To):</span>
                     <strong className="text-indigo-600 text-sm">
-                      👤 {selectedFabView.handover_person_name || selectedFabView.supervisor_name || "Factory Receiver"}
+                      👤 {selectedFabView.handover_person_name || "Factory Receiver"}
                     </strong>
                   </div>
                   {(selectedFabView._cleanRemarks || selectedFabView.remarks) && (
