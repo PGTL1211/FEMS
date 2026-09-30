@@ -190,11 +190,11 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
     typeof navigator !== "undefined" &&
     typeof (navigator as any).userAgent === "string" &&
     (navigator as any).userAgent.includes("Cloudflare-Workers");
-  // Permanently designated dedicated Office 365 Service Account as per PGEL SOP
+  // Dedicated Office 365 Service Account for PG GROUP FEMS
   const smtpHost = "smtp.office365.com";
   const smtpUser = "verify.software2040@pgel.in";
   const smtpPass = "fmdrdczrxkpjrbsv";
-  const fromName = "PGEL MIS Verification";
+  const fromName = "PG GROUP FEMS Verification";
   const fromAddr = "verify.software2040@pgel.in";
   const port = 587;
 
@@ -219,7 +219,7 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
       await mailer.send({
         from: { name: fromName, email: fromAddr },
         to: { email },
-        subject: `PGEL MIS - Login Verification OTP: [${code}]`,
+        subject: `PG GROUP FEMS - Login Verification OTP: [${code}]`,
         text: `Your verification code is ${code}. It expires in 10 minutes.`,
         html: buildHtml(code, fromName),
       });
@@ -240,7 +240,7 @@ async function generateAndSendOtp(email: string, trigger: "user" | "admin", acto
       await transporter.sendMail({
         from: `"${fromName}" <${fromAddr}>`,
         to: email,
-        subject: `PGEL MIS - Login Verification OTP: [${code}]`,
+        subject: `PG GROUP FEMS - Login Verification OTP: [${code}]`,
         text: `Your verification code is ${code}. It expires in 10 minutes.`,
         html: buildHtml(code, fromName),
       });
