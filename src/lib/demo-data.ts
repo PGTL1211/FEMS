@@ -81,7 +81,7 @@ export const DEMO_DEPARTMENTS = [
   { id: "dept-7", name: "Purchase & Procurement", description: "Vendor Management, Material Sourcing & Purchase Orders" },
   { id: "dept-8", name: "Maintenance & Engineering", description: "Machine Maintenance, Preventive Checks & Facility Engineering" },
   { id: "dept-9", name: "Toolroom & Jig/Fixture", description: "Die Repair, Custom Tooling, Jigs & Fixtures Maintenance" },
-  { id: "dept-10", name: "Surface Finishing & Paint Shop", description: "Powder Coating, Electroplating & Surface Pre-treatment" },
+  { id: "dept-10", name: "Paint Shop", description: "Powder Coating, Electroplating & Surface Pre-treatment" },
   { id: "dept-11", name: "Dispatch & Logistics", description: "Packaging, Shipping, E-Way Bill & Freight Management" },
   { id: "dept-12", name: "Environment, Health & Safety (EHS)", description: "Industrial Safety, PPE Compliance & Waste Management" },
   { id: "dept-13", name: "Finance & Accounts", description: "Material Costing, Invoicing, Vendor Payments & Auditing" },

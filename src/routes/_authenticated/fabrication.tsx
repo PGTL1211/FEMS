@@ -249,7 +249,10 @@ export function FabricationPage() {
       }
 
       if (!handoverDept) {
-        handoverDept = (item.departments as any)?.name || "Surface Finishing & Paint Shop";
+        handoverDept = (item.departments as any)?.name || "Paint Shop";
+      }
+      if (handoverDept.toLowerCase().includes("surface finishing")) {
+        handoverDept = "Paint Shop";
       }
       if (!handoverBy) {
         handoverBy = item.supervisor_name || "Fabrication Dispatcher";
@@ -314,7 +317,7 @@ export function FabricationPage() {
   const [rows, setRows] = useState<MatRow[]>([{ material_id: "", required: "" }]);
 
   // Handover & Weighing Form State
-  const [handoverDept, setHandoverDept] = useState("Surface Finishing & Paint Shop");
+  const [handoverDept, setHandoverDept] = useState("Paint Shop");
   const [handoverBy, setHandoverBy] = useState("");
   const [handoverPerson, setHandoverPerson] = useState("");
   const [weighingMode, setWeighingMode] = useState<"batch" | "individual">("batch");
@@ -410,7 +413,7 @@ export function FabricationPage() {
     setSupervisor("");
     setRemarks("");
     setRows([{ material_id: "", required: "" }]);
-    setHandoverDept("Surface Finishing & Paint Shop");
+    setHandoverDept("Paint Shop");
     setHandoverBy("");
     setHandoverPerson("");
     setWeighingMode("batch");
@@ -1898,7 +1901,7 @@ export function FabricationPage() {
                   <div>
                     <span className="text-slate-500 block">Handed Over To Department:</span>
                     <strong className="text-slate-800 dark:text-slate-200 text-sm">
-                      🏢 {selectedFabView.handover_department || "Surface Finishing & Paint Shop"}
+                      🏢 {selectedFabView.handover_department?.toLowerCase().includes("surface finishing") ? "Paint Shop" : (selectedFabView.handover_department || "Paint Shop")}
                     </strong>
                   </div>
                   <div>
