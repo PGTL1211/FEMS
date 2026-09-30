@@ -58,7 +58,61 @@ function StatNumber({ value }: { value: number }) {
   );
 }
 
-// Dual Display Component: Weight View (Kg) vs Unit View (Pieces / Qty) - whole figures without decimals
+// Dynamic Standard Weight Formatter:
+// - Small quantities (< 1000 kg): displays in kg (e.g. 850 kg)
+// - Medium & large quantities (>= 1000 kg): displays in Ton (e.g. 24.5 Ton, 150 Ton)
+// - Very large quantities (>= 1,000,000 kg): displays in k Ton (e.g. 1.25 k Ton)
+export function formatDynamicWeight(weightKg: number): {
+  value: string;
+  unit: string;
+  fullStr: string;
+  exactKgStr: string;
+} {
+  const w = Number(weightKg) || 0;
+  const absW = Math.abs(w);
+
+  if (absW < 1000) {
+    const val = Math.round(w).toLocaleString();
+    return {
+      value: val,
+      unit: "kg",
+      fullStr: `${val} kg`,
+      exactKgStr: `${val} kg`,
+    };
+  }
+
+  if (absW < 1000000) {
+    const tons = w / 1000;
+    const rounded1 = Math.round(tons * 10) / 10;
+    const rounded2 = Math.round(tons * 100) / 100;
+    const formatted = Number.isInteger(rounded1)
+      ? rounded1.toLocaleString()
+      : rounded2.toLocaleString();
+
+    return {
+      value: formatted,
+      unit: "Ton",
+      fullStr: `${formatted} Ton`,
+      exactKgStr: `${Math.round(w).toLocaleString()} kg`,
+    };
+  }
+
+  const kTon = w / 1000000;
+  const roundedKTon1 = Math.round(kTon * 10) / 10;
+  const roundedKTon2 = Math.round(kTon * 100) / 100;
+  const formattedKTon = Number.isInteger(roundedKTon1)
+    ? roundedKTon1.toLocaleString()
+    : roundedKTon2.toLocaleString();
+
+  return {
+    value: formattedKTon,
+    unit: "k Ton",
+    fullStr: `${formattedKTon} k Ton`,
+    exactKgStr: `${Math.round(w).toLocaleString()} kg`,
+  };
+}
+
+// Dual Display Component: Weight View (Dynamic kg / Ton) vs Unit View (Pieces / Qty)
 function StatDisplay({
   mode,
   qtyValue,
@@ -71,22 +125,23 @@ function StatDisplay({
   unitLabel: string;
 }) {
   const roundedQty = Math.round(Number(qtyValue) || 0);
-  const roundedKg = Math.round(Number(weightKg) || 0);
+  const dynWeight = formatDynamicWeight(weightKg);
 
   if (mode === "weight") {
-    const mainStr = roundedKg.toLocaleString();
-
     return (
       <div className="flex flex-col items-center justify-center my-0.5 w-full">
         <div className="flex items-baseline justify-center gap-1 max-w-full px-0.5">
-          <span className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight truncate" title={`${mainStr} kg`}>
-            {mainStr}
+          <span
+            className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight truncate"
+            title={`${dynWeight.fullStr} (${dynWeight.exactKgStr})`}
+          >
+            {dynWeight.value}
           </span>
           <span className="text-[10px] sm:text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 shrink-0">
-            kg
+            {dynWeight.unit}
           </span>
         </div>
-        <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full">
+        <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full" title={dynWeight.exactKgStr}>
           {roundedQty.toLocaleString()} {unitLabel}
         </span>
       </div>
@@ -96,8 +151,8 @@ function StatDisplay({
   return (
     <div className="flex flex-col items-center justify-center my-0.5 w-full">
       <StatNumber value={roundedQty} />
-      <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full">
-        {roundedKg.toLocaleString()} kg
+      <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full" title={dynWeight.exactKgStr}>
+        {dynWeight.fullStr}
       </span>
     </div>
   );
@@ -705,7 +760,7 @@ function Dashboard() {
             <Scale className="h-4 w-4 text-indigo-600" />
             <span className="tracking-wide">PRODUCTION & INVENTORY KPI</span>
             <span className="hidden sm:inline text-[10px] text-slate-500 font-semibold">
-              {kpiMode === "weight" ? "• Showing Physical Scale / BOM Weight (Kg)" : "• Showing Piece Count & Unit Quantity"}
+              {kpiMode === "weight" ? "• Showing Physical Scale / BOM Weight (Dynamic kg / Ton)" : "• Showing Piece Count & Unit Quantity"}
             </span>
           </div>
 
@@ -718,10 +773,10 @@ function Dashboard() {
                   ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-400"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
               }`}
-              title="Show fabricated products & materials in Weight (Kg)"
+              title="Show fabricated products & materials in Weight (Dynamic kg / Ton)"
             >
               <Scale className="h-3 w-3" />
-              Weight View (Kg)
+              Weight View (Dynamic kg/Ton)
             </button>
             <button
               type="button"
@@ -752,7 +807,7 @@ function Dashboard() {
               unitLabel="Units"
             />
             <span className="text-[9px] text-slate-600 font-bold truncate w-full">
-              {kpiMode === "weight" ? `${Math.round(totalFab).toLocaleString()} Units Total` : `${Math.round(totalFabWeightKg).toLocaleString()} kg`}
+              {kpiMode === "weight" ? `${Math.round(totalFab).toLocaleString()} Units Total` : formatDynamicWeight(totalFabWeightKg).fullStr}
             </span>
           </div>
 
@@ -859,7 +914,7 @@ function Dashboard() {
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-red-100 truncate w-full">LOW STOCK</span>
             <span className="text-2xl lg:text-3xl font-black my-0.5 text-white truncate max-w-full block">{lowStock.length}</span>
             <span className="text-[9px] text-red-100 font-semibold truncate w-full">
-              {criticalStock.length} Critical ({Math.round(totalLowStockWeightKg).toLocaleString()} kg)
+              {criticalStock.length} Critical ({formatDynamicWeight(totalLowStockWeightKg).fullStr})
             </span>
           </div>
 
