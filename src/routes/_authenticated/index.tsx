@@ -58,22 +58,42 @@ function StatNumber({ value }: { value: number }) {
   );
 }
 
-// Clean Full-Value Weight Formatter (Whole number in kg without decimals/points)
-export function formatFullKgWeight(weightKg: number): {
+// Dynamic Standard Weight Formatter (Strictly Whole Integer without any decimals):
+// - Small entry (< 1,000 kg): Unit is 'kg' (e.g. 24 kg, 663 kg)
+// - Large entry (>= 1,000 kg): Unit is 'Ton' rounded to whole number with NO decimals (e.g. 26 Ton, 879 Ton, 60 Ton, 819 Ton)
+export function formatSmartWeight(weightKg: number): {
   value: string;
   unit: string;
   fullStr: string;
+  exactKgStr: string;
 } {
-  const rounded = Math.round(Number(weightKg) || 0);
-  const formatted = rounded.toLocaleString();
+  const w = Number(weightKg) || 0;
+  const absW = Math.abs(w);
+  const roundedKg = Math.round(w);
+  const exactKgStr = `${roundedKg.toLocaleString()} kg`;
+
+  if (absW < 1000) {
+    const valStr = roundedKg.toLocaleString();
+    return {
+      value: valStr,
+      unit: "kg",
+      fullStr: `${valStr} kg`,
+      exactKgStr,
+    };
+  }
+
+  // Large entry: convert to Ton, rounded to whole number (NO DECIMALS)
+  const roundedTon = Math.round(w / 1000);
+  const tonStr = roundedTon.toLocaleString();
   return {
-    value: formatted,
-    unit: "kg",
-    fullStr: `${formatted} kg`,
+    value: tonStr,
+    unit: "Ton",
+    fullStr: `${tonStr} Ton`,
+    exactKgStr,
   };
 }
 
-// Dual Display Component: Weight View (Full kg without decimals) vs Unit View (Pieces / Qty)
+// Dual Display Component: Weight View (Dynamic kg / Ton without decimals) vs Unit View (Pieces / Qty)
 function StatDisplay({
   mode,
   qtyValue,
@@ -86,28 +106,30 @@ function StatDisplay({
   unitLabel: string;
 }) {
   const roundedQty = Math.round(Number(qtyValue) || 0);
-  const roundedKg = Math.round(Number(weightKg) || 0);
-  const kgStr = roundedKg.toLocaleString();
+  const smartWeight = formatSmartWeight(weightKg);
 
   if (mode === "weight") {
     let sizeClass = "text-xl sm:text-2xl lg:text-3xl font-black";
-    if (kgStr.length > 8) {
+    if (smartWeight.value.length > 8) {
       sizeClass = "text-sm sm:text-base lg:text-lg font-black tracking-tight";
-    } else if (kgStr.length > 6) {
+    } else if (smartWeight.value.length > 6) {
       sizeClass = "text-base sm:text-lg lg:text-xl font-black tracking-tight";
     }
 
     return (
       <div className="flex flex-col items-center justify-center my-0.5 w-full">
         <div className="flex items-baseline justify-center gap-1 max-w-full px-0.5">
-          <span className={`${sizeClass} tracking-tight truncate`} title={`${kgStr} kg`}>
-            {kgStr}
+          <span
+            className={`${sizeClass} tracking-tight truncate`}
+            title={`${smartWeight.fullStr} (${smartWeight.exactKgStr})`}
+          >
+            {smartWeight.value}
           </span>
           <span className="text-[10px] sm:text-[11px] font-black uppercase text-slate-700 dark:text-slate-300 shrink-0">
-            kg
+            {smartWeight.unit}
           </span>
         </div>
-        <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full">
+        <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full" title={smartWeight.exactKgStr}>
           {roundedQty.toLocaleString()} {unitLabel}
         </span>
       </div>
@@ -117,8 +139,8 @@ function StatDisplay({
   return (
     <div className="flex flex-col items-center justify-center my-0.5 w-full">
       <StatNumber value={roundedQty} />
-      <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full" title={`${kgStr} kg`}>
-        {kgStr} kg
+      <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate max-w-full" title={smartWeight.exactKgStr}>
+        {smartWeight.fullStr}
       </span>
     </div>
   );
@@ -726,7 +748,7 @@ function Dashboard() {
             <Scale className="h-4 w-4 text-indigo-600" />
             <span className="tracking-wide">PRODUCTION & INVENTORY KPI</span>
             <span className="hidden sm:inline text-[10px] text-slate-500 font-semibold">
-              {kpiMode === "weight" ? "• Showing Weight in Kilograms (kg)" : "• Showing Piece Count & Unit Quantity"}
+              {kpiMode === "weight" ? "• Showing Weight (kg for small, Ton for large without decimals)" : "• Showing Piece Count & Unit Quantity"}
             </span>
           </div>
 
@@ -739,10 +761,10 @@ function Dashboard() {
                   ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-400"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
               }`}
-              title="Show fabricated products & materials in Weight (kg)"
+              title="Show fabricated products & materials in Weight (kg for small, Ton for large without decimals)"
             >
               <Scale className="h-3 w-3" />
-              Weight View (kg)
+              Weight View (kg/Ton)
             </button>
             <button
               type="button"
@@ -773,7 +795,7 @@ function Dashboard() {
               unitLabel="Units"
             />
             <span className="text-[9px] text-slate-600 font-bold truncate w-full">
-              {kpiMode === "weight" ? `${Math.round(totalFab).toLocaleString()} Units Total` : `${Math.round(totalFabWeightKg).toLocaleString()} kg`}
+              {kpiMode === "weight" ? `${Math.round(totalFab).toLocaleString()} Units Total` : formatSmartWeight(totalFabWeightKg).fullStr}
             </span>
           </div>
 
@@ -880,7 +902,7 @@ function Dashboard() {
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-red-100 truncate w-full">LOW STOCK</span>
             <span className="text-2xl lg:text-3xl font-black my-0.5 text-white truncate max-w-full block">{lowStock.length}</span>
             <span className="text-[9px] text-red-100 font-semibold truncate w-full">
-              {criticalStock.length} Critical ({Math.round(totalLowStockWeightKg).toLocaleString()} kg)
+              {criticalStock.length} Critical ({formatSmartWeight(totalLowStockWeightKg).fullStr})
             </span>
           </div>
 
