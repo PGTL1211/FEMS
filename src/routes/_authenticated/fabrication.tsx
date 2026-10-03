@@ -136,10 +136,26 @@ export function FabricationPage() {
   const materialsById = useMemo(() => {
     const map: Record<string, any> = {};
     materialsList.forEach((m: any) => {
-      const demoRef = DEMO_MATERIALS.find(dm => dm.id === m.id || dm.material_id === m.material_id || dm.name === m.name);
+      const mName = (m.name || "").trim().toLowerCase();
+      const mCode = (m.code || "").trim().toLowerCase();
+      const demoRef = DEMO_MATERIALS.find(
+        (dm) =>
+          dm.id === m.id ||
+          dm.material_id === m.material_id ||
+          (mCode && dm.code?.toLowerCase() === mCode) ||
+          (mName && dm.name?.toLowerCase() === mName)
+      );
+      let descWeight: number | null = null;
+      if (m.description) {
+        const match = String(m.description).match(/weight[:\s=]+([0-9]+(?:\.[0-9]+)?)/i);
+        if (match && match[1]) {
+          const parsed = parseFloat(match[1]);
+          if (!isNaN(parsed) && parsed > 0) descWeight = parsed;
+        }
+      }
       const enriched = {
         ...m,
-        unit_weight_kg: Number(m.unit_weight_kg ?? demoRef?.unit_weight_kg ?? 0.5),
+        unit_weight_kg: Number(m.unit_weight_kg ?? descWeight ?? demoRef?.unit_weight_kg ?? 0.5),
       };
       const key = m.material_id || m.id;
       if (key) map[key] = enriched;

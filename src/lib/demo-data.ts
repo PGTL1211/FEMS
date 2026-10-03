@@ -63,11 +63,30 @@ export const DEMO_MATERIALS: Material[] = [
 
   { material_id: "m-18", id: "m-18", name: "SS PIPE", code: "SS-PIPE-28", uom: "MTR", unit_weight_kg: 1.25, total_purchased: 15000, total_consumed: 11200, current_stock: 3800, minimum_stock: 1500, status: "healthy", active: true },
   { material_id: "m-19", id: "m-19", name: "6X2 PU WHEEL SWIVEL LOCK", code: "WHL-6X2-SL", uom: "PCS", unit_weight_kg: 2.10, total_purchased: 2400, total_consumed: 1800, current_stock: 600, minimum_stock: 300, status: "healthy", active: true },
-  { material_id: "m-20", id: "m-20", name: "6X2 PU WHEEL FIXED", code: "WHL-6X2-FX", uom: "PCS", unit_weight_kg: 1.85, total_purchased: 2200, total_consumed: 1700, current_stock: 500, minimum_stock: 250, status: "healthy", active: true },
+  { material_id: "m-20", id: "m-20", name: "6X2 PU WHEEL FIXED", code: "WHL-6X2-FX", uom: "PCS", unit_weight_kg: 2.00, total_purchased: 2200, total_consumed: 1700, current_stock: 500, minimum_stock: 250, status: "healthy", active: true },
   { material_id: "m-21", id: "m-21", name: "3x1.25 PU WHEEL SWIVEL", code: "WHL-3X1-SW", uom: "PCS", unit_weight_kg: 0.75, total_purchased: 3100, total_consumed: 2780, current_stock: 320, minimum_stock: 350, status: "low", active: true },
   { material_id: "m-22", id: "m-22", name: "3x1.25 PU WHEEL SWIVEL LOCK", code: "WHL-3X1-SL", uom: "PCS", unit_weight_kg: 0.82, total_purchased: 2900, total_consumed: 2300, current_stock: 600, minimum_stock: 300, status: "healthy", active: true },
-  { material_id: "m-23", id: "m-23", name: "END CAP", code: "END-CAP-28", uom: "PCS", unit_weight_kg: 0.04, total_purchased: 18000, total_consumed: 13500, current_stock: 4500, minimum_stock: 2000, status: "healthy", active: true },
-  { material_id: "m-24", id: "m-24", name: "PJ15 JOINT", code: "PJ15", uom: "SET", unit_weight_kg: 0.35, total_purchased: 3300, total_consumed: 2700, current_stock: 600, minimum_stock: 300, status: "healthy", active: true }
+  { material_id: "m-23", id: "m-23", name: "END CAP", code: "END-CAP-28", uom: "PCS", unit_weight_kg: 0.14, total_purchased: 18000, total_consumed: 13500, current_stock: 4500, minimum_stock: 2000, status: "healthy", active: true },
+  { material_id: "m-24", id: "m-24", name: "PJ15 JOINT", code: "PJ15", uom: "SET", unit_weight_kg: 0.35, total_purchased: 3300, total_consumed: 2700, current_stock: 600, minimum_stock: 300, status: "healthy", active: true },
+
+  // User Added Materials & Standard Weights
+  { material_id: "m-25", id: "m-25", name: "MS Pipe 25mm", code: "MS-PIPE-25", uom: "MTR", unit_weight_kg: 1.75, total_purchased: 5000, total_consumed: 3500, current_stock: 1500, minimum_stock: 200, status: "healthy", active: true },
+  { material_id: "m-26", id: "m-26", name: "SS Pipe Round 25mm", code: "SS-PIPE-RD-25", uom: "MTR", unit_weight_kg: 0.60, total_purchased: 4000, total_consumed: 2800, current_stock: 1200, minimum_stock: 200, status: "healthy", active: true },
+  { material_id: "m-27", id: "m-27", name: "SS Sheet 1.5 mm", code: "SS-SHT-1.5", uom: "SQMTR", unit_weight_kg: 11.75, total_purchased: 1200, total_consumed: 850, current_stock: 350, minimum_stock: 50, status: "healthy", active: true },
+  { material_id: "m-28", id: "m-28", name: "Slider rail 2.5 inch", code: "SLD-RL-2.5", uom: "MTR", unit_weight_kg: 1.10, total_purchased: 3000, total_consumed: 2100, current_stock: 900, minimum_stock: 100, status: "healthy", active: true },
+  { material_id: "m-29", id: "m-29", name: "Slider rail 3.5 inch", code: "SLD-RL-3.5", uom: "MTR", unit_weight_kg: 1.90, total_purchased: 2500, total_consumed: 1800, current_stock: 700, minimum_stock: 100, status: "healthy", active: true },
+  { material_id: "m-30", id: "m-30", name: "6X2 PU WHEEL brake", code: "PU-6X2-BRK", uom: "PCS", unit_weight_kg: 2.22, total_purchased: 2000, total_consumed: 1400, current_stock: 600, minimum_stock: 100, status: "healthy", active: true },
+  { material_id: "m-31", id: "m-31", name: "6X2 White WHEEL FIXED", code: "WHL-6X2-WHT-FX", uom: "PCS", unit_weight_kg: 1.90, total_purchased: 2200, total_consumed: 1600, current_stock: 600, minimum_stock: 100, status: "healthy", active: true },
+  { material_id: "m-32", id: "m-32", name: "6X2 White WHEEL FIXED (2.3kg)", code: "WHL-6X2-WHT-FX-23", uom: "PCS", unit_weight_kg: 2.30, total_purchased: 1800, total_consumed: 1300, current_stock: 500, minimum_stock: 100, status: "healthy", active: true },
+  { material_id: "m-33", id: "m-33", name: "Wheel fixing clamp", code: "WHL-CLMP", uom: "SET", unit_weight_kg: 0.46, total_purchased: 4500, total_consumed: 3200, current_stock: 1300, minimum_stock: 150, status: "healthy", active: true },
+  { material_id: "m-34", id: "m-34", name: "Bend 45 degree", code: "BND-45-DEG", uom: "SET", unit_weight_kg: 0.16, total_purchased: 6000, total_consumed: 4200, current_stock: 1800, minimum_stock: 150, status: "healthy", active: true },
+  { material_id: "m-35", id: "m-35", name: "Bend 90 degree", code: "BND-90-DEG", uom: "SET", unit_weight_kg: 0.09, total_purchased: 7000, total_consumed: 5100, current_stock: 1900, minimum_stock: 150, status: "healthy", active: true },
+  { material_id: "m-36", id: "m-36", name: "parllel clamp", code: "PRL-CLMP", uom: "SET", unit_weight_kg: 0.11, total_purchased: 5500, total_consumed: 3900, current_stock: 1600, minimum_stock: 150, status: "healthy", active: true },
+  { material_id: "m-37", id: "m-37", name: "End cap", code: "END-CAP-SET", uom: "SET", unit_weight_kg: 0.14, total_purchased: 8000, total_consumed: 5800, current_stock: 2200, minimum_stock: 200, status: "healthy", active: true },
+  { material_id: "m-38", id: "m-38", name: "U band 25mm", code: "U-BND-25", uom: "SET", unit_weight_kg: 0.21, total_purchased: 4800, total_consumed: 3400, current_stock: 1400, minimum_stock: 150, status: "healthy", active: true },
+  { material_id: "m-39", id: "m-39", name: "L band 25 mm", code: "L-BND-25", uom: "SET", unit_weight_kg: 0.22, total_purchased: 5200, total_consumed: 3700, current_stock: 1500, minimum_stock: 150, status: "healthy", active: true },
+  { material_id: "m-40", id: "m-40", name: "Straight Joint", code: "STR-JNT", uom: "SET", unit_weight_kg: 0.21, total_purchased: 6500, total_consumed: 4600, current_stock: 1900, minimum_stock: 150, status: "healthy", active: true },
+  { material_id: "m-41", id: "m-41", name: "MS PIPE 40 x 40 mm", code: "ms40x40", uom: "PCS", unit_weight_kg: 2.10, total_purchased: 1500, total_consumed: 900, current_stock: 600, minimum_stock: 100, status: "healthy", active: true }
 ];
 
 // 14 Standard Manufacturing Plant Departments
