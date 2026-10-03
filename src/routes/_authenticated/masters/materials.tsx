@@ -194,11 +194,23 @@ function MaterialsPage() {
         desc = weightStr;
       }
 
+      // Resolve real database UUID if demo ID (e.g. m-1) was passed
+      let targetId = editingMaterial.id;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+      if (!isUuid && editingMaterial.code) {
+        const { data: dbItem } = await supabase
+          .from("materials")
+          .select("id")
+          .eq("code", editingMaterial.code)
+          .maybeSingle();
+        if (dbItem?.id) targetId = dbItem.id;
+      }
+
       let serverOk = false;
       try {
         await updateMaterialFn({
           data: {
-            id: editingMaterial.id,
+            id: targetId,
             name: editForm.name.trim(),
             code: editForm.code.trim(),
             uom: editForm.uom.trim(),
@@ -221,7 +233,7 @@ function MaterialsPage() {
           minimum_stock: Number(editForm.minimum_stock) || 0,
           description: desc,
           active: editForm.active,
-        }).eq("id", editingMaterial.id);
+        }).eq("id", targetId);
         if (error) throw error;
       }
 
@@ -252,11 +264,22 @@ function MaterialsPage() {
     if (!materialToDelete) return;
     setIsDeleting(true);
     try {
+      let targetId = materialToDelete.id;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+      if (!isUuid && materialToDelete.code) {
+        const { data: dbItem } = await supabase
+          .from("materials")
+          .select("id")
+          .eq("code", materialToDelete.code)
+          .maybeSingle();
+        if (dbItem?.id) targetId = dbItem.id;
+      }
+
       let serverOk = false;
       try {
         await deleteMaterialFn({
           data: {
-            id: materialToDelete.id,
+            id: targetId,
             code: materialToDelete.code,
             name: materialToDelete.name,
           },
@@ -267,7 +290,7 @@ function MaterialsPage() {
       }
 
       if (!serverOk) {
-        const { error } = await supabase.from("materials").delete().eq("id", materialToDelete.id);
+        const { error } = await supabase.from("materials").delete().eq("id", targetId);
         if (error) {
           if (error.code === "23503") {
             throw new Error("Cannot delete: This material is linked to existing Purchase Orders or Invoices. Please remove those records first or deactivate the material.");
@@ -323,51 +346,49 @@ function MaterialsPage() {
               Export Materials (CSV)
             </Button>
 
-            {isSuperAdmin && (
-              <Dialog open={open} onOpenChange={setOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
-                    <Plus className="h-4 w-4 mr-2" />New Material
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
+                  <Plus className="h-4 w-4 mr-2" />New Material
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Add Material &amp; Standard Weight</DialogTitle></DialogHeader>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Material Name *</Label>
+                    <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. SS PIPE 28mm" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Item Code *</Label>
+                    <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. SS-PIPE-28" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>UOM *</Label>
+                    <Input value={form.uom} onChange={(e) => setForm({ ...form, uom: e.target.value })} placeholder="MTR / PCS / SET / SQMTR" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Unit Weight (kg / UOM) *</Label>
+                    <Input type="number" step="0.01" min={0} value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} placeholder="e.g. 1.25" />
+                    <p className="text-[11px] text-slate-500">Weight per piece/meter for BOM calculation</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Minimum Stock</Label>
+                    <Input type="number" min={0} value={form.minimum_stock} onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })} />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Description</Label>
+                    <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional specifications or notes" />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button onClick={() => add.mutate()} disabled={add.isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
+                    {add.isPending ? "Adding..." : "Add Material"}
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader><DialogTitle>Add Material &amp; Standard Weight</DialogTitle></DialogHeader>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label>Material Name *</Label>
-                      <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. SS PIPE 28mm" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Item Code *</Label>
-                      <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. SS-PIPE-28" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>UOM *</Label>
-                      <Input value={form.uom} onChange={(e) => setForm({ ...form, uom: e.target.value })} placeholder="MTR / PCS / SET / SQMTR" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Unit Weight (kg / UOM) *</Label>
-                      <Input type="number" step="0.01" min={0} value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} placeholder="e.g. 1.25" />
-                      <p className="text-[11px] text-slate-500">Weight per piece/meter for BOM calculation</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Minimum Stock</Label>
-                      <Input type="number" min={0} value={form.minimum_stock} onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })} />
-                    </div>
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label>Description</Label>
-                      <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional specifications or notes" />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2 mt-4">
-                    <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-                    <Button onClick={() => add.mutate()} disabled={add.isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
-                      {add.isPending ? "Adding..." : "Add Material"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         }
       />
@@ -430,32 +451,27 @@ function MaterialsPage() {
                       {Number(m.minimum_stock || 0).toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {isSuperAdmin ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
-                            title="Edit Material in Database (Super Admin)"
-                            onClick={() => openEditModal(m)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50"
-                            title="Delete Material from Database (Super Admin)"
-                            onClick={() => setMaterialToDelete(m)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 font-medium inline-flex items-center gap-1">
-                          <Lock className="h-3 w-3" /> View only
-                        </span>
-                      )}
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2.5 text-xs font-semibold gap-1 text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/50 shadow-sm"
+                          title="Edit Material in Database"
+                          onClick={() => openEditModal(m)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span>Edit</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 text-rose-500 border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/50 dark:hover:bg-rose-950/50 shadow-sm"
+                          title="Delete Material from Database"
+                          onClick={() => setMaterialToDelete(m)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 );
