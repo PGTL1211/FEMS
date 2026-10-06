@@ -58,7 +58,8 @@ function StatNumber({ value }: { value: number }) {
   );
 }
 
-export { formatSmartWeight } from "@/lib/material-weights";
+import { formatSmartWeight } from "@/lib/material-weights";
+export { formatSmartWeight };
 
 // Dual Display Component: Weight View (Dynamic kg / Ton without decimals) vs Unit View (Pieces / Qty)
 function StatDisplay({
