@@ -28,30 +28,7 @@ import { useSession } from "@/hooks/useSession";
 import { useRole } from "@/hooks/useRole";
 import { updateMaterial, deleteMaterial } from "@/lib/materials.functions";
 
-export function getMaterialUnitWeight(m: any): number {
-  if (m.unit_weight_kg != null && !isNaN(Number(m.unit_weight_kg)) && Number(m.unit_weight_kg) > 0) {
-    return Number(m.unit_weight_kg);
-  }
-  if (m.description) {
-    const match = String(m.description).match(/weight[:\s=]+([0-9]+(?:\.[0-9]+)?)/i);
-    if (match && match[1]) {
-      const parsed = parseFloat(match[1]);
-      if (!isNaN(parsed) && parsed > 0) return parsed;
-    }
-  }
-  const mName = (m.name || "").trim().toLowerCase();
-  const mCode = (m.code || "").trim().toLowerCase();
-  const found = DEMO_MATERIALS.find(
-    (dm) =>
-      dm.id === m.id ||
-      (mCode && dm.code?.toLowerCase() === mCode) ||
-      (mName && dm.name?.toLowerCase() === mName)
-  );
-  if (found?.unit_weight_kg != null) {
-    return Number(found.unit_weight_kg);
-  }
-  return 0.5;
-}
+export { getMaterialUnitWeight } from "@/lib/material-weights";
 
 export const Route = createFileRoute("/_authenticated/masters/materials")({
   head: () => ({ meta: [{ title: "Materials — FEMS" }] }),

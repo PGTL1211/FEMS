@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, ChevronDown, ChevronRight, Eye, Calendar, ShoppingCart, Truck, Package, FileText, FileUp, Sparkles, CheckCircle2, UploadCloud, RefreshCw, Trash2, Layers, AlertCircle, Search, MapPin } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Eye, Calendar, ShoppingCart, Truck, Package, FileText, FileUp, Sparkles, CheckCircle2, UploadCloud, RefreshCw, Trash2, Layers, AlertCircle, Search, MapPin, Scale, Boxes } from "lucide-react";
 import { useState, useMemo, Fragment, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { useLocationPlant } from "@/lib/location-context";
 import { DEMO_MATERIALS, DEMO_PURCHASES } from "@/lib/demo-data";
 import { extractInvoiceWithAI } from "@/lib/invoice-ai.functions";
+import { getMaterialUnitWeight, formatSmartWeight } from "@/lib/material-weights";
 
 export const Route = createFileRoute("/_authenticated/purchase")({
   head: () => ({ meta: [{ title: "Purchase — FEMS" }] }),
@@ -618,6 +619,9 @@ function PurchasePage() {
           totalOrderedQty: 0,
           totalReceivedQty: 0,
           totalPendingQty: 0,
+          totalOrderedWeightKg: 0,
+          totalReceivedWeightKg: 0,
+          totalPendingWeightKg: 0,
         });
       }
       const group = map.get(key);
@@ -630,20 +634,31 @@ function PurchasePage() {
       const mat = materialsList.find((m: any) => (m.material_id || m.id) === p.material_id);
       const matName = p.material_name || mat?.name || "Raw Material";
       const matUom = p.uom || mat?.uom || "PCS";
+      const unitWeight = getMaterialUnitWeight(mat || p);
+      const orderedWeight = ordered * unitWeight;
+      const receivedWeight = received * unitWeight;
+      const pendingWeight = pending * unitWeight;
 
       group.items.push({
         id: p.id || p.po_id || `${key}_mat_${group.items.length}`,
         material_id: p.material_id,
         material_name: matName,
         uom: matUom,
+        unit_weight_kg: unitWeight,
         po_quantity: ordered,
         received_quantity: received,
         pending_quantity: pending,
+        ordered_weight_kg: orderedWeight,
+        received_weight_kg: receivedWeight,
+        pending_weight_kg: pendingWeight,
       });
 
       group.totalOrderedQty += ordered;
       group.totalReceivedQty += received;
       group.totalPendingQty += pending;
+      group.totalOrderedWeightKg += orderedWeight;
+      group.totalReceivedWeightKg += receivedWeight;
+      group.totalPendingWeightKg += pendingWeight;
     });
 
     return Array.from(map.values());
@@ -652,6 +667,7 @@ function PurchasePage() {
   const [openPO, setOpenPO] = useState(false);
   const [selectedPOView, setSelectedPOView] = useState<any | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<"units" | "weight">("units");
   const [poDate, setPoDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [poNumber, setPoNumber] = useState("");
   const [supplier, setSupplier] = useState("");
@@ -659,6 +675,11 @@ function PurchasePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "received">("all");
   const [fulfillingPO, setFulfillingPO] = useState<string | null>(null);
+
+  // Summary Weight Totals for Purchase Overview
+  const allOrderedWeightKg = useMemo(() => groupedPOs.reduce((s, g) => s + (g.totalOrderedWeightKg || 0), 0), [groupedPOs]);
+  const allReceivedWeightKg = useMemo(() => groupedPOs.reduce((s, g) => s + (g.totalReceivedWeightKg || 0), 0), [groupedPOs]);
+  const allPendingWeightKg = useMemo(() => groupedPOs.reduce((s, g) => s + (g.totalPendingWeightKg || 0), 0), [groupedPOs]);
 
   // Sync status filter from URL if navigated from Dashboard
   useEffect(() => {
@@ -1472,7 +1493,7 @@ function PurchasePage() {
         )}
       />
 
-      {/* Filter & Search Bar with Status Tabs */}
+      {/* Filter & Search Bar with Status Tabs & Weight Toggle */}
       <Card className="p-3 shadow-sm border border-slate-200 dark:border-slate-800 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Status Tabs: All, Pending, Completed */}
@@ -1523,6 +1544,36 @@ function PurchasePage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Dual Display Toggle: Weight View vs Unit View */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setViewMode("weight")}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-extrabold flex items-center gap-1 transition-all ${
+                  viewMode === "weight"
+                    ? "bg-white text-indigo-700 shadow-xs dark:bg-slate-900 dark:text-indigo-400"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
+                }`}
+                title="Show purchase orders in Weight (kg / Ton)"
+              >
+                <Scale className="h-3 w-3" />
+                Weight View (kg/Ton)
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("units")}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-extrabold flex items-center gap-1 transition-all ${
+                  viewMode === "units"
+                    ? "bg-white text-indigo-700 shadow-xs dark:bg-slate-900 dark:text-indigo-400"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
+                }`}
+                title="Show purchase orders in Unit Qty"
+              >
+                <Boxes className="h-3 w-3" />
+                Unit View (Qty)
+              </button>
+            </div>
+
             {activeLocation && (
               <Badge variant="outline" className="px-2.5 py-1 text-xs font-bold border-indigo-300 bg-indigo-50 text-indigo-700">
                 <MapPin className="h-3 w-3 mr-1 inline" />
@@ -1530,7 +1581,7 @@ function PurchasePage() {
               </Badge>
             )}
             <Badge variant="secondary" className="px-3 py-1 font-bold text-xs bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-              Showing {filteredGroupedPOs.length} of {groupedPOs.length} Orders
+              {viewMode === "weight" ? `${formatSmartWeight(allOrderedWeightKg).fullStr} Total Ordered` : `Showing ${filteredGroupedPOs.length} of ${groupedPOs.length} Orders`}
             </Badge>
           </div>
         </div>
@@ -1607,21 +1658,82 @@ function PurchasePage() {
                           <div className="flex flex-wrap gap-1 mt-0.5 max-w-[280px]">
                             {group.items.map((item: any, iIdx: number) => (
                               <Badge key={iIdx} variant="secondary" className="text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
-                                📦 {item.material_name} <span className="text-indigo-600 dark:text-indigo-400 font-bold ml-1 font-mono">({item.po_quantity} {item.uom})</span>
+                                📦 {item.material_name} <span className="text-indigo-600 dark:text-indigo-400 font-bold ml-1 font-mono">({item.po_quantity} {item.uom} • {formatSmartWeight(item.ordered_weight_kg).fullStr})</span>
                               </Badge>
                             ))}
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right font-black text-slate-900 dark:text-slate-100">
-                        {group.totalOrderedQty.toLocaleString()}
+
+                      {/* Ordered Column: Dual View */}
+                      <td className="px-4 py-3 text-right">
+                        {viewMode === "weight" ? (
+                          <>
+                            <div className="font-black text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
+                              {formatSmartWeight(group.totalOrderedWeightKg).fullStr}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {group.totalOrderedQty.toLocaleString()} Units
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="font-black text-slate-900 dark:text-slate-100">
+                              {group.totalOrderedQty.toLocaleString()}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {formatSmartWeight(group.totalOrderedWeightKg).fullStr}
+                            </div>
+                          </>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                        {group.totalReceivedQty.toLocaleString()}
+
+                      {/* Received Column: Dual View */}
+                      <td className="px-4 py-3 text-right">
+                        {viewMode === "weight" ? (
+                          <>
+                            <div className="font-bold text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm">
+                              {formatSmartWeight(group.totalReceivedWeightKg).fullStr}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {group.totalReceivedQty.toLocaleString()} Units
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="font-bold text-emerald-600 dark:text-emerald-400">
+                              {group.totalReceivedQty.toLocaleString()}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {formatSmartWeight(group.totalReceivedWeightKg).fullStr}
+                            </div>
+                          </>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-amber-600 dark:text-amber-400">
-                        {group.totalPendingQty.toLocaleString()}
+
+                      {/* Pending Column: Dual View */}
+                      <td className="px-4 py-3 text-right">
+                        {viewMode === "weight" ? (
+                          <>
+                            <div className="font-bold text-amber-600 dark:text-amber-400 text-xs sm:text-sm">
+                              {formatSmartWeight(group.totalPendingWeightKg).fullStr}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {group.totalPendingQty.toLocaleString()} Units
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="font-bold text-amber-600 dark:text-amber-400">
+                              {group.totalPendingQty.toLocaleString()}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {formatSmartWeight(group.totalPendingWeightKg).fullStr}
+                            </div>
+                          </>
+                        )}
                       </td>
+
                       <td className="px-4 py-3">
                         {isFullyReceived ? (
                           <Badge className="bg-emerald-600 text-white text-[10px]">Completed</Badge>
@@ -1658,33 +1770,48 @@ function PurchasePage() {
                       </td>
                     </tr>
 
-                    {/* Expandable Line Items & Invoices Details */}
+                    {/* Expandable Line Items & Invoices Details with Weights */}
                     {isOpen && (
                       <tr className="bg-slate-50/70 dark:bg-slate-900/60">
-                        <td colSpan={10} className="p-4">
+                        <td colSpan={11} className="p-4">
                           <div className="space-y-3">
                             <h4 className="text-xs uppercase font-extrabold text-indigo-700 dark:text-indigo-300 tracking-wider">
-                              Materials Included in PO #{group.po_number} ({group.items.length} Line Items)
+                              Materials Included in PO #{group.po_number} ({group.items.length} Line Items • {formatSmartWeight(group.totalOrderedWeightKg).fullStr})
                             </h4>
                             <table className="w-full text-xs bg-white dark:bg-slate-900 rounded-lg border shadow-xs">
                               <thead className="bg-slate-100 dark:bg-slate-800 font-bold uppercase text-slate-600 dark:text-slate-400">
                                 <tr>
                                   <th className="px-3 py-2 text-left">Material Name</th>
                                   <th className="px-3 py-2 text-center">UOM</th>
-                                  <th className="px-3 py-2 text-right">Ordered Qty</th>
-                                  <th className="px-3 py-2 text-right">Received Qty</th>
-                                  <th className="px-3 py-2 text-right">Pending Qty</th>
+                                  <th className="px-3 py-2 text-right">Ordered</th>
+                                  <th className="px-3 py-2 text-right">Received</th>
+                                  <th className="px-3 py-2 text-right">Pending</th>
                                   <th className="px-3 py-2 text-right">Action</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {group.items.map((item: any) => (
                                   <tr key={item.id} className="hover:bg-slate-50/60">
-                                    <td className="px-3 py-2 font-bold text-slate-900 dark:text-slate-100">{item.material_name}</td>
+                                    <td className="px-3 py-2 font-bold text-slate-900 dark:text-slate-100">
+                                      <div>{item.material_name}</div>
+                                      <span className="text-[10px] text-slate-400 font-normal">
+                                        Unit Weight: {item.unit_weight_kg?.toFixed(2)} kg/{item.uom}
+                                      </span>
+                                    </td>
                                     <td className="px-3 py-2 text-center text-slate-500 font-medium">{item.uom}</td>
-                                    <td className="px-3 py-2 text-right font-semibold">{item.po_quantity.toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right font-bold text-emerald-600">{item.received_quantity.toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right font-bold text-amber-600">{item.pending_quantity.toLocaleString()}</td>
+
+                                    <td className="px-3 py-2 text-right">
+                                      <div className="font-semibold">{item.po_quantity.toLocaleString()} {item.uom}</div>
+                                      <div className="text-[10px] text-slate-500 font-medium">{formatSmartWeight(item.ordered_weight_kg).fullStr}</div>
+                                    </td>
+                                    <td className="px-3 py-2 text-right">
+                                      <div className="font-bold text-emerald-600">{item.received_quantity.toLocaleString()} {item.uom}</div>
+                                      <div className="text-[10px] text-slate-500 font-medium">{formatSmartWeight(item.received_weight_kg).fullStr}</div>
+                                    </td>
+                                    <td className="px-3 py-2 text-right">
+                                      <div className="font-bold text-amber-600">{item.pending_quantity.toLocaleString()} {item.uom}</div>
+                                      <div className="text-[10px] text-slate-500 font-medium">{formatSmartWeight(item.pending_weight_kg).fullStr}</div>
+                                    </td>
                                     <td className="px-3 py-2 text-right">
                                       {canWrite && item.pending_quantity > 0 && (
                                         <div className="flex items-center justify-end gap-1.5">
@@ -2450,24 +2577,33 @@ function PurchasePage() {
                   </div>
 
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[10px] uppercase font-extrabold text-slate-500 block">Total Ordered Units</span>
+                    <span className="text-[10px] uppercase font-extrabold text-slate-500 block">Total Ordered</span>
                     <p className="text-sm font-black text-slate-900 dark:text-slate-100 mt-1 font-mono">
-                      {selectedPOView.totalOrderedQty.toLocaleString()}
+                      {selectedPOView.totalOrderedQty.toLocaleString()} Units
                     </p>
+                    <span className="text-[10px] font-semibold text-slate-500 block">
+                      {formatSmartWeight(selectedPOView.totalOrderedWeightKg).fullStr}
+                    </span>
                   </div>
 
                   <div className="bg-emerald-50/70 dark:bg-emerald-950/30 p-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900">
-                    <span className="text-[10px] uppercase font-extrabold text-emerald-700 dark:text-emerald-400 block">Total Received Qty</span>
+                    <span className="text-[10px] uppercase font-extrabold text-emerald-700 dark:text-emerald-400 block">Total Received</span>
                     <p className="text-sm font-black text-emerald-800 dark:text-emerald-300 mt-1 font-mono">
-                      {selectedPOView.totalReceivedQty.toLocaleString()}
+                      {selectedPOView.totalReceivedQty.toLocaleString()} Units
                     </p>
+                    <span className="text-[10px] font-semibold text-emerald-600 block">
+                      {formatSmartWeight(selectedPOView.totalReceivedWeightKg).fullStr}
+                    </span>
                   </div>
 
                   <div className="bg-amber-50/70 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200/70 dark:border-amber-900">
                     <span className="text-[10px] uppercase font-extrabold text-amber-700 dark:text-amber-400 block">Total Pending Delivery</span>
                     <p className="text-sm font-black text-amber-800 dark:text-amber-300 mt-1 font-mono">
-                      {selectedPOView.totalPendingQty.toLocaleString()}
+                      {selectedPOView.totalPendingQty.toLocaleString()} Units
                     </p>
+                    <span className="text-[10px] font-semibold text-amber-600 block">
+                      {formatSmartWeight(selectedPOView.totalPendingWeightKg).fullStr}
+                    </span>
                   </div>
                 </div>
 
@@ -2489,9 +2625,9 @@ function PurchasePage() {
                         <tr>
                           <th className="text-left px-3.5 py-2.5">Material Name</th>
                           <th className="text-center px-3.5 py-2.5">UOM</th>
-                          <th className="text-right px-3.5 py-2.5">Ordered Qty</th>
-                          <th className="text-right px-3.5 py-2.5">Received Qty</th>
-                          <th className="text-right px-3.5 py-2.5">Pending Qty</th>
+                          <th className="text-right px-3.5 py-2.5">Ordered</th>
+                          <th className="text-right px-3.5 py-2.5">Received</th>
+                          <th className="text-right px-3.5 py-2.5">Pending</th>
                           <th className="text-center px-3.5 py-2.5">Status</th>
                         </tr>
                       </thead>
@@ -2501,19 +2637,25 @@ function PurchasePage() {
                           return (
                             <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                               <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">
-                                {item.material_name}
+                                <div>{item.material_name}</div>
+                                <span className="text-[10px] text-slate-400 font-normal">
+                                  Unit Weight: {item.unit_weight_kg?.toFixed(2)} kg/{item.uom}
+                                </span>
                               </td>
                               <td className="px-3.5 py-2.5 text-center text-slate-500 font-medium">
                                 {item.uom}
                               </td>
-                              <td className="px-3.5 py-2.5 text-right font-black text-slate-900 dark:text-slate-100 font-mono">
-                                {item.po_quantity.toLocaleString()}
+                              <td className="px-3.5 py-2.5 text-right font-mono">
+                                <div className="font-black text-slate-900 dark:text-slate-100">{item.po_quantity.toLocaleString()} {item.uom}</div>
+                                <div className="text-[10px] text-slate-500 font-medium">{formatSmartWeight(item.ordered_weight_kg).fullStr}</div>
                               </td>
-                              <td className="px-3.5 py-2.5 text-right font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                                {item.received_quantity.toLocaleString()}
+                              <td className="px-3.5 py-2.5 text-right font-mono">
+                                <div className="font-bold text-emerald-600 dark:text-emerald-400">{item.received_quantity.toLocaleString()} {item.uom}</div>
+                                <div className="text-[10px] text-slate-500 font-medium">{formatSmartWeight(item.received_weight_kg).fullStr}</div>
                               </td>
-                              <td className="px-3.5 py-2.5 text-right font-bold text-amber-600 dark:text-amber-400 font-mono">
-                                {item.pending_quantity.toLocaleString()}
+                              <td className="px-3.5 py-2.5 text-right font-mono">
+                                <div className="font-bold text-amber-600 dark:text-amber-400">{item.pending_quantity.toLocaleString()} {item.uom}</div>
+                                <div className="text-[10px] text-slate-500 font-medium">{formatSmartWeight(item.pending_weight_kg).fullStr}</div>
                               </td>
                               <td className="px-3.5 py-2.5 text-center">
                                 {itemDone ? (

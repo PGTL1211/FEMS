@@ -58,40 +58,7 @@ function StatNumber({ value }: { value: number }) {
   );
 }
 
-// Dynamic Standard Weight Formatter (Strictly Whole Integer without any decimals):
-// - Small entry (< 1,000 kg): Unit is 'kg' (e.g. 24 kg, 663 kg)
-// - Large entry (>= 1,000 kg): Unit is 'Ton' rounded to whole number with NO decimals (e.g. 26 Ton, 879 Ton, 60 Ton, 819 Ton)
-export function formatSmartWeight(weightKg: number): {
-  value: string;
-  unit: string;
-  fullStr: string;
-  exactKgStr: string;
-} {
-  const w = Number(weightKg) || 0;
-  const absW = Math.abs(w);
-  const roundedKg = Math.round(w);
-  const exactKgStr = `${roundedKg.toLocaleString()} kg`;
-
-  if (absW < 1000) {
-    const valStr = roundedKg.toLocaleString();
-    return {
-      value: valStr,
-      unit: "kg",
-      fullStr: `${valStr} kg`,
-      exactKgStr,
-    };
-  }
-
-  // Large entry: convert to Ton, rounded to whole number (NO DECIMALS)
-  const roundedTon = Math.round(w / 1000);
-  const tonStr = roundedTon.toLocaleString();
-  return {
-    value: tonStr,
-    unit: "Ton",
-    fullStr: `${tonStr} Ton`,
-    exactKgStr,
-  };
-}
+export { formatSmartWeight } from "@/lib/material-weights";
 
 // Dual Display Component: Weight View (Dynamic kg / Ton without decimals) vs Unit View (Pieces / Qty)
 function StatDisplay({
